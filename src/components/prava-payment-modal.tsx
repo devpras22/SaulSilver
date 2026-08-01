@@ -185,7 +185,12 @@ export function PravaPaymentModal({
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-noir/90 data-[state=open]:animate-fade-in" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex max-h-[95vh] w-[calc(100vw-1rem)] max-w-md -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl border border-border bg-noir-card shadow-2xl focus:outline-none data-[state=open]:animate-fade-in-up">
+        {/* No `transform` on Content or any ancestor of the Prava iframe — a
+            transformed containing block around a cross-origin iframe is a
+            documented WebKit crash trigger when Safari suspends the render
+            tree to drop the native Touch ID sheet. Center with flexbox instead. */}
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2">
+        <Dialog.Content className="flex max-h-[95vh] w-[calc(100vw-1rem)] max-w-md flex-col overflow-hidden rounded-2xl border border-border bg-noir-card shadow-2xl focus:outline-none data-[state=open]:animate-fade-in-up">
           <div className="flex shrink-0 items-center justify-between border-b border-border px-5 py-4">
             <Dialog.Title className="font-display text-lg font-semibold text-ink">
               {purchase ? `Pay for ${purchase.product.name}` : "Payment"}
@@ -230,6 +235,7 @@ export function PravaPaymentModal({
             )}
           </div>
         </Dialog.Content>
+        </div>
       </Dialog.Portal>
     </Dialog.Root>
   );
