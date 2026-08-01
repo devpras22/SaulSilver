@@ -77,9 +77,9 @@ export function PravaPaymentModal({
             }
           );
           const result: PaymentResultResponse = await res.json();
-          if (result.status === "completed" || result.status === "failed") {
+          if (result.status === "completed" || result.status === "failed" || result.status === "awaiting_result") {
             setPaymentResult(result);
-            setFlow(result.status === "completed" ? "completed" : "failed");
+            setFlow(result.status === "failed" ? "failed" : "completed");
             if (result.status === "failed") {
               setErrorMsg(result.transactions?.[0]?.error?.message || "Payment failed");
             }
@@ -144,23 +144,26 @@ export function PravaPaymentModal({
   // On completed, report APPROVED + fire onPaid.
   useEffect(() => {
     if (flow !== "completed" || !paymentResult) return;
-    const lineItem = paymentResult.transactions?.[0]?.line_items?.[0];
-    if (!lineItem) return;
+    const txnRefId = paymentResult.transactions?.[0]?.line_items?.[0]?.txn_ref_id || paymentResult.transactions?.[0]?.id;
+
     (async () => {
-      try {
-        await fetch("/api/pay/report", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sessionId: paymentResult.session_id,
-            txnRefId: lineItem.txn_ref_id,
-            status: "APPROVED",
-          }),
-        });
-      } catch {
-        // non-fatal
+      // Report APPROVED so the transaction doesn't stick in awaiting_result.
+      if (txnRefId) {
+        try {
+          await fetch("/api/pay/report", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sessionId: paymentResult.session_id,
+              txnRefId,
+              status: "APPROVED",
+            }),
+          });
+        } catch {
+          // non-fatal
+        }
+        onPaid({ txnRefId, sessionId: paymentResult.session_id });
       }
-      onPaid({ txnRefId: lineItem.txn_ref_id, sessionId: paymentResult.session_id });
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flow, paymentResult]);

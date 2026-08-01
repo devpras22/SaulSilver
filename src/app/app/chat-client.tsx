@@ -393,7 +393,7 @@ export default function AppChat({
                     <button
                       key={e.value}
                       onClick={() => handleSend(e.label)}
-                      className="rounded-full border border-border bg-noir/50 backdrop-blur-md shadow-sm px-4 py-2 text-sm text-ink-soft transition-all hover:-translate-y-0.5 hover:border-resin/40 hover:bg-resin/10 hover:text-resin-light"
+                      className="rounded-full border border-border bg-noir/80 shadow-sm px-4 py-2 text-sm text-ink-soft transition-all hover:-translate-y-0.5 hover:border-resin/40 hover:bg-resin/10 hover:text-resin-light"
                     >
                       {e.label}
                     </button>
@@ -408,7 +408,7 @@ export default function AppChat({
                     <button
                       key={t.value}
                       onClick={() => handleSend(t.label)}
-                      className="rounded-full border border-border bg-noir/50 backdrop-blur-md shadow-sm px-4 py-2 text-sm text-ink-soft transition-all hover:-translate-y-0.5 hover:border-resin/40 hover:bg-resin/10 hover:text-resin-light"
+                      className="rounded-full border border-border bg-noir/80 shadow-sm px-4 py-2 text-sm text-ink-soft transition-all hover:-translate-y-0.5 hover:border-resin/40 hover:bg-resin/10 hover:text-resin-light"
                     >
                       {t.label}
                     </button>
@@ -423,7 +423,7 @@ export default function AppChat({
                     <button
                       key={r}
                       onClick={() => handleSend(r)}
-                      className="rounded-full border border-border bg-noir/50 backdrop-blur-md shadow-sm px-4 py-2 text-sm text-ink-soft transition-all hover:-translate-y-0.5 hover:border-resin/40 hover:bg-resin/10 hover:text-resin-light"
+                      className="rounded-full border border-border bg-noir/80 shadow-sm px-4 py-2 text-sm text-ink-soft transition-all hover:-translate-y-0.5 hover:border-resin/40 hover:bg-resin/10 hover:text-resin-light"
                     >
                       {r}
                     </button>
@@ -439,7 +439,7 @@ export default function AppChat({
       </div>
 
       {/* Input bar */}
-      <div className="fixed inset-x-0 bottom-0 z-50 border-t border-border bg-noir/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md">
+      <div className="fixed inset-x-0 bottom-0 z-50 border-t border-border bg-noir pb-[env(safe-area-inset-bottom)]">
         <div className="mx-auto max-w-4xl px-3 py-3 sm:px-6 sm:py-4">
           <div className="flex items-end gap-2">
             <div className="flex flex-1 items-end gap-1 rounded-2xl border border-border bg-noir-card px-1.5 py-1 transition-colors focus-within:border-resin">

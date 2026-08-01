@@ -137,23 +137,24 @@ export function WalletModal({
   // When enrollment completes, save the card reference + report APPROVED.
   useEffect(() => {
     if (flow !== "completed" || !paymentResult) return;
-    const lineItem = paymentResult.transactions?.[0]?.line_items?.[0];
-    if (!lineItem) return;
+    const txnRefId = paymentResult.transactions?.[0]?.line_items?.[0]?.txn_ref_id || paymentResult.transactions?.[0]?.id;
 
     (async () => {
       // Report APPROVED so the transaction doesn't stick in awaiting_result.
-      try {
-        await fetch("/api/wallet/report", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sessionId: paymentResult.session_id,
-            txnRefId: lineItem.txn_ref_id,
-            status: "APPROVED",
-          }),
-        });
-      } catch {
-        // non-fatal
+      if (txnRefId) {
+        try {
+          await fetch("/api/wallet/report", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sessionId: paymentResult.session_id,
+              txnRefId,
+              status: "APPROVED",
+            }),
+          });
+        } catch {
+          // non-fatal
+        }
       }
 
       // Fetch the card details from onSuccess — but since onSuccess is a no-op
