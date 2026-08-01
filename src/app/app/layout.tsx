@@ -21,7 +21,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="relative min-h-screen">
-      <header className="sticky top-0 z-40 border-b border-border bg-cream/85 backdrop-blur-md">
+      <header className="sticky top-0 z-40 border-b border-border bg-cream/95">
         {/* ── DESKTOP: single row (brand · address · actions) ── */}
         <div className="hidden w-full items-center justify-between gap-2 px-6 py-3 sm:flex">
           <div className="flex shrink-0 items-center gap-3">
