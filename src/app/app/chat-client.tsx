@@ -353,7 +353,6 @@ export default function AppChat({
   //     completion — our page never mounts the iframe.
   //   • Non-WebKit (Chrome/Firefox/Edge desktop, Chrome Android): the richer
   //     embedded modal (PravaCardForm iframe + in-page UX), which works fine.
-  const [busy, setBusy] = useState(false);
   const [activePurchase, setActivePurchase] = useState<{ product: CannabisProduct; brand: Brand } | null>(null);
   const [pendingPrescription, setPendingPrescription] = useState<{ product: CannabisProduct; brand: Brand; sessionId: string } | null>(null);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
