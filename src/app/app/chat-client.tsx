@@ -425,7 +425,17 @@ export default function AppChat({
           body: JSON.stringify({ sessionId: webkitPollingSession }),
         });
         const result: PaymentResultResponse = await res.json();
-        if (result.status === "completed" || result.status === "failed" || result.status === "awaiting_result") {
+        // Completion states. Prava pauses passkey transactions at
+        // "awaiting_result" / "creds_generated" — it won't finalize the charge
+        // until the merchant explicitly reports APPROVED. The modal path handles
+        // this on its completion effect; the new-tab path must do the same, or
+        // the dashboard stalls at creds_generated and the charge never completes.
+        const isDone =
+          result.status === "completed" ||
+          result.status === "failed" ||
+          result.status === "awaiting_result" ||
+          result.status === "creds_generated";
+        if (isDone) {
           setWebkitPollingSession(null);
 
           // Remove the "Opening secure checkout…" status bubble + spinner,
@@ -442,7 +452,23 @@ export default function AppChat({
             setActivePurchase(null);
           } else {
             const txnRefId = result.transactions?.[0]?.line_items?.[0]?.txn_ref_id || result.transactions?.[0]?.txn_id;
-            if (txnRefId) onPaid({ txnRefId, sessionId: result.session_id });
+            if (txnRefId) {
+              // Paused state (creds_generated / awaiting_result): report APPROVED
+              // so Prava finalizes the charge. For already-completed it's a no-op
+              // confirmation. Mirrors the modal path's /api/pay/report call.
+              if (result.status === "awaiting_result" || result.status === "creds_generated") {
+                try {
+                  await fetch("/api/pay/report", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ sessionId: result.session_id, txnRefId, status: "APPROVED" }),
+                  });
+                } catch {
+                  // non-fatal — still surface success to the user
+                }
+              }
+              onPaid({ txnRefId, sessionId: result.session_id });
+            }
           }
           return;
         }
