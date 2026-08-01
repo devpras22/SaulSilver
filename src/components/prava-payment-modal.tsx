@@ -144,7 +144,7 @@ export function PravaPaymentModal({
   // On completed, report APPROVED + fire onPaid.
   useEffect(() => {
     if (flow !== "completed" || !paymentResult) return;
-    const txnRefId = paymentResult.transactions?.[0]?.line_items?.[0]?.txn_ref_id || paymentResult.transactions?.[0]?.id;
+    const txnRefId = paymentResult.transactions?.[0]?.line_items?.[0]?.txn_ref_id || paymentResult.transactions?.[0]?.txn_id;
 
     (async () => {
       // Report APPROVED so the transaction doesn't stick in awaiting_result.
