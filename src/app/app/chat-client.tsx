@@ -218,7 +218,7 @@ export default function AppChat({
               phone: userText,
             }),
           });
-          const effect = pendingPrescription.product.effects?.[0] || "health";
+          const effect = pendingPrescription.product.effect_tags?.[0] || "health";
           const dynamicEffect = effect === "sleep" ? "insomnia" : effect === "pain" ? "pain" : effect === "anxiety" ? "anxiety" : "condition";
           pushAssistant(`Sent. I let their medical team know you need this to help with the ${dynamicEffect}. They'll call you within 24 hours. Hang tight.`, "text");
         } finally {
@@ -268,6 +268,36 @@ export default function AppChat({
       pushAssistant("Sorry, my brain glitched. Try again.", "text");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const handleUpload = async (file: File) => {
+    if (!pendingPrescription) {
+      pushAssistant("Upload successful. (File uploads outside of checkout are not fully supported yet).", "text");
+      return;
+    }
+    
+    setMessages((m) => [...m, { id: `user_${Date.now()}`, role: "user", content: `[Uploaded ${file.name}]`, kind: "text", timestamp: new Date().toISOString() }]);
+    setBusy(true);
+    pushAssistant("Sending prescription to fulfillment...", "thinking");
+    try {
+      await fetch("/api/prescription", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            brandName: pendingPrescription.brand.name,
+            productName: pendingPrescription.product.name,
+            orderId: pendingPrescription.sessionId,
+            doctorRouting: pendingPrescription.brand.doctor_routing,
+            hasFile: true,
+          }),
+      });
+      const effect = pendingPrescription.product.effect_tags?.[0] || "health";
+      const dynamicEffect = effect === "sleep" ? "insomnia" : effect === "pain" ? "pain" : effect === "anxiety" ? "anxiety" : "condition";
+      pushAssistant(`Got it. Sent it straight to Moon Impact's fulfillment team so they can ship it immediately. Hope this finally helps with the ${dynamicEffect}.`, "text");
+    } finally {
+      setBusy(false);
+      setPendingPrescription(null);
     }
   };
 
