@@ -30,10 +30,10 @@ export default function Home() {
           <Wordmark />
           <div className="flex items-center gap-1">
             <Button variant="ghost" size="sm" asChild>
-              <Link href="/app">Open App</Link>
+              <Link href="/app?intent=browse">Open App</Link>
             </Button>
             <Button variant="primary" size="sm" asChild>
-              <Link href="/app">Find my gummy</Link>
+              <Link href="/app?intent=match">Find my gummy</Link>
             </Button>
           </div>
         </nav>
@@ -72,12 +72,12 @@ export default function Home() {
 
           <div className="mt-10 flex animate-fade-in-up flex-col items-center justify-center gap-3 sm:flex-row" style={{ animationDelay: "200ms" }}>
             <Button size="lg" className="w-full px-8 glow-resin sm:w-auto" asChild>
-              <Link href="/app">
+              <Link href="/app?intent=match">
                 Match me <ArrowRight className="ml-1.5 h-4 w-4" />
               </Link>
             </Button>
             <Button size="lg" variant="secondary" className="w-full px-8 sm:w-auto" asChild>
-              <Link href="/app">
+              <Link href="/app?intent=verify">
                 Is this brand any good?
               </Link>
             </Button>
@@ -330,7 +330,7 @@ export default function Home() {
           </p>
           <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Button size="lg" className="w-full px-8 glow-resin sm:w-auto" asChild>
-              <Link href="/app">
+              <Link href="/app?intent=match">
                 Talk to SaulSilver <ArrowRight className="ml-1.5 h-4 w-4" />
               </Link>
             </Button>
@@ -426,7 +426,7 @@ function DoorCard({
       <h3 className="mb-3 font-display text-2xl font-medium text-ink">{title}</h3>
       <p className="mb-6 flex-1 text-sm leading-relaxed text-ink-soft">{body}</p>
       <Link
-        href="/app"
+        href={`/app?intent=${tone === "frost" ? "verify" : tone === "leaf" ? "browse" : "match"}`}
         className={`inline-flex items-center gap-1.5 text-sm font-medium ${toneMap.text} transition-colors`}
       >
         {cta} <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
