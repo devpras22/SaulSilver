@@ -32,6 +32,33 @@ import { EFFECTS, TOLERANCES } from "@/lib/types";
 import { formatINR } from "@/lib/utils";
 import { AddressDialog } from "@/components/header-address";
 import { PravaPaymentModal } from "@/components/prava-payment-modal";
+import type { PaymentResultResponse } from "@/lib/prava";
+
+/**
+ * Detects the WebKit browser engine (the thing that crashes during the Prava
+ * passkey sheet). Catches desktop Safari AND every browser on iOS — Chrome,
+ * Firefox, Edge on iPhone all run on iOS WebKit, not their own engines, so
+ * they share the same crash risk as Safari. Non-WebKit (Chrome/Firefox/Edge
+ * on desktop, Chrome on Android) gets the richer embedded-modal UX.
+ *
+ * On WebKit we open the whole Prava flow in a new tab and poll for completion
+ * — our page never mounts the cross-origin iframe, which is what was killing
+ * the tab during the cross-window WebAuthn handshake.
+ */
+function isWebKitEngine(): boolean {
+  if (typeof window === "undefined") return false;
+  // iOS = always WebKit (Apple's policy). Catches every iOS browser.
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  // Desktop Safari: AppleWebKit + no Chrome/CriOS/EdgiOS/FxiOS + vendor Apple.
+  // This excludes Chrome-on-Mac (which has "Chrome/" in UA) and Firefox/Edge.
+  const ua = navigator.userAgent;
+  const isDesktopSafari = /AppleWebKit/.test(ua) &&
+    /Safari/.test(ua) &&
+    !/Chrome|CriOS|EdgiOS|FxiOS|Edg\//.test(ua) &&
+    navigator.vendor === "Apple Computer, Inc.";
+  return isIOS || isDesktopSafari;
+}
 
 export default function AppChat({
   savedAddress,
@@ -278,13 +305,21 @@ export default function AppChat({
     }
   };
 
-  // ── Payment — opens the Prava payment modal ──
+  // ── Payment ──
   //
-  // The modal mounts Prava's iframe (PravaCardForm) and polls for completion.
-  // First time: card form → OTP → passkey. Repeat: saved cards → passkey.
-  // On completion: report APPROVED, save the order, prescription email if needed.
+  // Two paths, same handler on completion:
+  //   • WebKit engine (Safari desktop + all iOS browsers): the cross-origin
+  //     Prava iframe kills the tab during the cross-window WebAuthn passkey
+  //     handshake. So we open the WHOLE Prava flow in a new tab and poll for
+  //     completion — our page never mounts the iframe.
+  //   • Non-WebKit (Chrome/Firefox/Edge desktop, Chrome Android): the richer
+  //     embedded modal (PravaCardForm iframe + in-page UX), which works fine.
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [activePurchase, setActivePurchase] = useState<{ product: CannabisProduct; brand: Brand } | null>(null);
+
+  // WebKit new-tab path state.
+  const [webkitPollingSession, setWebkitPollingSession] = useState<string | null>(null);
+  const webkitPollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const runPayment = async (product: CannabisProduct, brand: Brand, skipAddressCheck = false) => {
     if (!savedAddress && !skipAddressCheck) {
@@ -300,9 +335,93 @@ export default function AppChat({
       );
       return;
     }
+
     setActivePurchase({ product, brand });
+
+    // ── WebKit path: new tab, no iframe on our page ──
+    if (isWebKitEngine()) {
+      pushAssistant(`Opening secure checkout for ${product.name}…`, "payment", { step: "Opening secure checkout…" });
+      try {
+        const res = await fetch("/api/pay", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            items: [{ name: product.name }],
+            total: product.price_inr,
+            merchantName: brand.name,
+            merchantUrl: brand.website ?? "https://saul.pras.fun",
+            cardId: savedCardId ?? undefined,
+          }),
+        });
+        const s = await res.json();
+        if (!res.ok) throw new Error(s.error || "Failed to create session");
+
+        // Open the FULL Prava flow in a new tab. Our page hosts no iframe →
+        // the cross-window WebAuthn handshake can't crash us.
+        window.open(s.iframe_url, "_blank", "noopener,noreferrer");
+
+        // Show an inline "complete it in the other window" status + poll.
+        pushAssistant(`Checkout opened in a new tab. Approve it there with your passkey — I'll wait here.`, "payment", {
+          step: "Waiting for passkey approval…",
+          detail: "Complete the payment in the tab that just opened.",
+        });
+        setWebkitPollingSession(s.session_id);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Unknown error";
+        pushAssistant(`Couldn't start checkout: ${msg}`, "text");
+        setActivePurchase(null);
+      }
+      return;
+    }
+
+    // ── Non-WebKit path: embedded modal ──
     setPaymentModalOpen(true);
   };
+
+  // Poll for the WebKit new-tab payment. Same completion handler (onPaid) as
+  // the modal path. Recursive setTimeout with strict cleanup — no leaked timers.
+  useEffect(() => {
+    if (!webkitPollingSession) return;
+    let stopped = false;
+
+    const doPoll = async () => {
+      if (stopped) return;
+      try {
+        const res = await fetch("/api/pay/poll", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId: webkitPollingSession }),
+        });
+        const result: PaymentResultResponse = await res.json();
+        if (result.status === "completed" || result.status === "failed" || result.status === "awaiting_result") {
+          setWebkitPollingSession(null);
+          if (result.status === "failed") {
+            pushAssistant(`Payment failed: ${result.transactions?.[0]?.error?.message || "unknown"}.`, "text");
+            setActivePurchase(null);
+          } else {
+            const txnRefId = result.transactions?.[0]?.line_items?.[0]?.txn_ref_id || result.transactions?.[0]?.txn_id;
+            if (txnRefId) onPaid({ txnRefId, sessionId: result.session_id });
+          }
+          return;
+        }
+      } catch {
+        // keep polling on transient errors
+      }
+      if (!stopped) {
+        webkitPollingRef.current = setTimeout(doPoll, 3000);
+      }
+    };
+
+    doPoll();
+    return () => {
+      stopped = true;
+      if (webkitPollingRef.current) {
+        clearTimeout(webkitPollingRef.current);
+        webkitPollingRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [webkitPollingSession]);
 
   // Called when the payment modal reports success.
   const onPaid = async ({ txnRefId, sessionId }: { txnRefId: string; sessionId: string }) => {
