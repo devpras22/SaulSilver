@@ -53,6 +53,9 @@ export default function PravaCardForm({ session, onError }: PravaCardFormProps) 
     if (sdkRef.current) {
       sdkRef.current.destroy();
       sdkRef.current = null;
+      if (containerRef.current) {
+        containerRef.current.innerHTML = "";
+      }
     }
 
     try {
@@ -97,6 +100,9 @@ export default function PravaCardForm({ session, onError }: PravaCardFormProps) 
     return () => {
       sdkRef.current?.destroy();
       sdkRef.current = null;
+      if (containerRef.current) {
+        containerRef.current.innerHTML = "";
+      }
       hasStarted.current = false; // ← Reset so remount (Strict Mode) re-initializes
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

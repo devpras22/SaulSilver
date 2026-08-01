@@ -53,14 +53,20 @@ export function PravaPaymentModal({
 
   const stopPolling = useCallback(() => {
     if (pollingRef.current) {
-      clearInterval(pollingRef.current);
+      if ((pollingRef.current as any).isCustomInterval) {
+        (pollingRef.current as any).stop();
+      } else {
+        clearTimeout(pollingRef.current as any);
+      }
       pollingRef.current = null;
     }
   }, []);
 
   const startPolling = useCallback(
     (sessionId: string) => {
+      let isStopped = false;
       const doPoll = async () => {
+        if (isStopped) return;
         try {
           const res = await fetch(
             `/api/pay/poll`,
@@ -73,20 +79,29 @@ export function PravaPaymentModal({
           const result: PaymentResultResponse = await res.json();
           if (result.status === "completed" || result.status === "failed") {
             setPaymentResult(result);
-            stopPolling();
             setFlow(result.status === "completed" ? "completed" : "failed");
             if (result.status === "failed") {
               setErrorMsg(result.transactions?.[0]?.error?.message || "Payment failed");
             }
+            return; // stop polling
           }
         } catch {
           // keep polling
         }
+        if (!isStopped) {
+          pollingRef.current = setTimeout(doPoll, 3000) as any;
+        }
       };
+      
       doPoll();
-      pollingRef.current = setInterval(doPoll, 3000);
+      
+      // Override stopPolling to also set the flag
+      pollingRef.current = {
+        isCustomInterval: true,
+        stop: () => { isStopped = true; }
+      } as any;
     },
-    [stopPolling]
+    []
   );
 
   // Create the session when opened with a purchase.

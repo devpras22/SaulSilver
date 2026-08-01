@@ -66,13 +66,19 @@ export function WalletModal({
 
   const stopPolling = useCallback(() => {
     if (pollingRef.current) {
-      clearInterval(pollingRef.current);
+      if ((pollingRef.current as any).isCustomInterval) {
+        (pollingRef.current as any).stop();
+      } else {
+        clearTimeout(pollingRef.current as any);
+      }
       pollingRef.current = null;
     }
   }, []);
 
   const startPolling = useCallback((sessionId: string) => {
+    let isStopped = false;
     const doPoll = async () => {
+      if (isStopped) return;
       try {
         const res = await fetch(`/api/wallet/result?sessionId=${encodeURIComponent(sessionId)}&_t=${Date.now()}`, {
           cache: "no-store" as RequestCache,
@@ -80,20 +86,28 @@ export function WalletModal({
         const result: PaymentResultResponse = await res.json();
         if (result.status === "completed" || result.status === "failed") {
           setPaymentResult(result);
-          stopPolling();
           setFlow(result.status === "completed" ? "completed" : "failed");
           if (result.status === "failed") {
             const msg = result.transactions?.[0]?.error?.message || "Card enrollment failed";
             setErrorMsg(msg);
           }
+          return;
         }
       } catch {
         // Keep polling on transient errors
       }
+      if (!isStopped) {
+        pollingRef.current = setTimeout(doPoll, 3000) as any;
+      }
     };
+    
     doPoll();
-    pollingRef.current = setInterval(doPoll, 3000);
-  }, [stopPolling]);
+    
+    pollingRef.current = {
+      isCustomInterval: true,
+      stop: () => { isStopped = true; }
+    } as any;
+  }, []);
 
   // Clean up polling on unmount
   useEffect(() => () => stopPolling(), [stopPolling]);
