@@ -45,7 +45,7 @@ export function Wordmark({ className }: { className?: string }) {
     <div className={cn("flex items-center gap-2.5", className)}>
       <Logo className="text-resin" size={26} />
       <span className="font-display text-xl font-semibold tracking-tight text-ink">
-        SaulSilver
+        Saul Silver
       </span>
     </div>
   );

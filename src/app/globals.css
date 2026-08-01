@@ -56,7 +56,7 @@
   --color-border: #2a2a35;
 
   --font-sans: var(--font-inter), -apple-system, system-ui, sans-serif;
-  --font-display: var(--font-fraunces), Georgia, serif;
+  --font-display: var(--font-space), var(--font-inter), sans-serif;
 
   --radius: 0.5rem;
 }

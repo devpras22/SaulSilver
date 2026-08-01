@@ -1,29 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prava, IS_MOCK, reportStatusMock } from "@/lib/prava";
+import { reportStatus } from "@/lib/prava";
 
 /**
  * POST /api/pay/report — report the final checkout outcome to Prava.
- * This completes the transaction lifecycle and moves the session to `completed`.
- *
- * Mock sessions (ses_mock_ prefix) route to the mock function directly.
+ * Body: { sessionId, txnRefId, status: "APPROVED" | "DECLINED" }
  */
 export async function POST(req: NextRequest) {
   try {
-    const { sessionId, txnRefId, status, amountPaid } = await req.json();
+    const { sessionId, txnRefId, status } = (await req.json()) as {
+      sessionId: string;
+      txnRefId: string;
+      status: "APPROVED" | "DECLINED";
+    };
     if (!sessionId || !txnRefId || !status) {
-      return NextResponse.json(
-        { error: "sessionId, txnRefId, status required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "sessionId, txnRefId, status required" }, { status: 400 });
     }
-
-    const isMockSession = IS_MOCK || sessionId.startsWith("ses_mock_");
-    if (isMockSession) {
-      await reportStatusMock({ sessionId, txnRefId, status, amountPaid });
-    } else {
-      await prava.reportStatus({ sessionId, txnRefId, status, amountPaid });
-    }
-    return NextResponse.json({ success: true, mock: isMockSession });
+    await reportStatus(sessionId, txnRefId, status);
+    return NextResponse.json({ ok: true });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unknown error";
     return NextResponse.json({ error: msg }, { status: 500 });

@@ -124,7 +124,7 @@ export async function POST(req: NextRequest) {
         await sendMessage({
           to: from,
           chatId,
-          text: `Creating a secure Prava payment session... In the web app, you'd approve with a passkey and I'd complete the checkout. (Demo: open kusushi.pras.fun/app for the full payment flow.)`,
+          text: `Creating a secure Prava payment session... In the web app, you'd approve with a passkey and I'd complete the checkout. (Demo: open saul.pras.fun/app for the full payment flow.)`,
         });
         convos.delete(from);
         return NextResponse.json({ ok: true });

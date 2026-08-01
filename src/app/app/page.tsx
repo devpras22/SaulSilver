@@ -26,16 +26,10 @@ export default async function AppPage({
 
   let savedAddress: string | null = null;
   if (user) {
-    savedAddress = (user.user_metadata?.default_address as string | undefined) ?? null;
-    if (!savedAddress) {
-      const { data: recentOrder } = await supabase
-        .from("orders")
-        .select("address")
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      savedAddress = (recentOrder as { address?: string } | null)?.address ?? null;
-    }
+    const addresses = (user.user_metadata?.addresses as any[]) ?? [];
+    const activeAddressId = (user.user_metadata?.active_address_id as string) ?? null;
+    const activeAddressObj = addresses.find(a => a.id === activeAddressId) || addresses[0] || null;
+    savedAddress = activeAddressObj?.address ?? null;
   }
 
   return <AppChat key={chatKey} savedAddress={savedAddress} intent={intent} />;

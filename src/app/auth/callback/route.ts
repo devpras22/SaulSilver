@@ -49,9 +49,9 @@ function BOOTSTRAP_HTML(origin: string, next: string): string {
   return `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><title>Signing in…</title></head>
-<body style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:system-ui;background:#faf7f2;color:#4a4540;margin:0;">
+<body style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:system-ui;background:#050505;color:#f5f5f5;margin:0;">
 <div style="text-align:center">
-  <div style="font-size:14px;opacity:0.7">Kusushi</div>
+  <div style="font-size:14px;opacity:0.7;color:#9b8f2d">Saul Silver</div>
   <div style="margin-top:8px;font-size:18px">Signing you in…</div>
 </div>
 <script>

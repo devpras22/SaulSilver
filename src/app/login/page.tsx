@@ -53,7 +53,7 @@ function LoginInner() {
     if (!email.trim()) return;
     setStatus("sending");
     setErrorMsg("");
-    localStorage.removeItem("kusushi:instant_login");
+    localStorage.removeItem("saulsilver:instant_login");
 
     const { error } = await supabase.auth.signInWithOtp({
       email: email.trim(),
@@ -86,7 +86,7 @@ function LoginInner() {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       // Set guest flag and redirect to minted link
-      localStorage.setItem("kusushi:instant_login", "1");
+      localStorage.setItem("saulsilver:instant_login", "1");
       window.location.href = data.actionLink;
     } catch (e) {
       setStatus("error");
@@ -103,7 +103,7 @@ function LoginInner() {
             <Wordmark className="[&_span]:text-2xl" />
           </div>
           <p className="text-sm text-ink-muted">
-            Medicine, on demand.
+            The Vijaya Sommelier.
           </p>
         </div>
 
@@ -153,7 +153,7 @@ function LoginInner() {
             <div className="mt-4 rounded-lg border border-matcha/30 bg-matcha/5 p-3 text-xs text-ink-soft">
               <p className="font-medium text-matcha">Check your inbox</p>
               <p className="mt-1">
-                We sent a sign-in link to <span className="font-medium">{email}</span>. Click it to enter Kusushi.
+                We sent a sign-in link to <span className="font-medium">{email}</span>. Click it to enter SaulSilver.
               </p>
             </div>
           )}
@@ -186,7 +186,7 @@ function LoginInner() {
         </div>
 
         <p className="mt-6 text-center text-xs text-ink-muted">
-          By signing in, you agree to use Kusushi responsibly.
+          By signing in, you agree to use SaulSilver responsibly.
         </p>
       </div>
     </div>

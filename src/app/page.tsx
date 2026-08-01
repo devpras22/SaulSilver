@@ -15,10 +15,20 @@ import {
   Search,
 } from "lucide-react";
 
-const BRANDS = [
-  "Magiccann", "Sanan Relief", "Polyherbs", "The Trost", "MediCann",
-  "Andyou", "Hebe Wellness", "Cannazo", "Cure By Design", "Cannavedic",
-  "Qurist", "Kushiva", "Moon Impact",
+const BRANDS: { name: string; url: string }[] = [
+  { name: "Magiccann", url: "https://magiccann.in" },
+  { name: "Sanan Relief", url: "https://sananrelief.com" },
+  { name: "Polyherbs", url: "https://www.aarogyacbd.com/brand/polyherbs" },
+  { name: "The Trost", url: "https://thetrost.com" },
+  { name: "MediCann", url: "https://medicann.co.in" },
+  { name: "Andyou", url: "https://andyou.in" },
+  { name: "Hebe Wellness", url: "https://hebe-wellness.com" },
+  { name: "Cannazo", url: "https://andyou.in" },
+  { name: "Cure By Design", url: "https://curebydesign.in" },
+  { name: "Cannavedic", url: "https://cannavedic.in" },
+  { name: "Qurist", url: "https://qurist.in" },
+  { name: "Kushiva", url: "https://www.kushiva.com" },
+  { name: "Moon Impact", url: "https://trymoonimpact.com" },
 ];
 
 export default function Home() {
@@ -29,19 +39,32 @@ export default function Home() {
         <nav className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <Wordmark />
           <div className="flex items-center gap-1">
-            <Button variant="ghost" size="sm" asChild>
-              <Link href="/app?intent=browse">Open App</Link>
-            </Button>
-            <Button variant="primary" size="sm" asChild>
-              <Link href="/app?intent=match">Find my gummy</Link>
+            <Button variant="primary" size="sm" className="bg-resin text-noir hover:bg-resin-light" asChild>
+              <Link href="/app?intent=match">Find My Gummy</Link>
             </Button>
           </div>
         </nav>
       </header>
 
       {/* Hero */}
-      <section className="relative w-full overflow-hidden">
-        {/* Soft resin + leaf glows behind the hero */}
+      <section className="relative w-full overflow-hidden bg-noir">
+        {/* Background Video */}
+        <div className="absolute inset-0 z-0 opacity-50 mix-blend-lighten">
+          <video
+            autoPlay
+            loop
+            muted
+            playsInline
+            className="h-full w-full object-cover"
+          >
+            <source src="/media/resin-hero.webm" type="video/webm" />
+            <source src="/media/resin-hero.mp4" type="video/mp4" />
+          </video>
+          {/* Dark gradient overlay so text remains perfectly legible */}
+          <div className="absolute inset-0 bg-gradient-to-b from-noir/90 via-noir/40 to-noir" />
+        </div>
+
+        {/* Soft resin + leaf glows over the video */}
         <div className="pointer-events-none absolute inset-0 z-0">
           <div className="absolute left-[-10%] top-[10%] h-[420px] w-[420px] rounded-full bg-resin/10 blur-[120px]" />
           <div className="absolute right-[-5%] bottom-[5%] h-[380px] w-[380px] rounded-full bg-leaf/10 blur-[120px]" />
@@ -50,7 +73,7 @@ export default function Home() {
         <div className="relative z-10 mx-auto max-w-4xl px-6 pt-24 pb-28 text-center">
           <div className="animate-fade-in-up">
             <Badge variant="resin" className="mb-7">
-              <Leaf className="h-3 w-3" /> the cannabis sommelier
+              <Leaf className="h-3 w-3" /> the Vijaya sommelier
             </Badge>
           </div>
 
@@ -63,7 +86,7 @@ export default function Home() {
           <p className="mx-auto mt-8 max-w-xl animate-fade-in-up text-lg leading-relaxed text-ink-soft" style={{ animationDelay: "100ms" }}>
             Thirteen brands. Hundreds of gummies. Zero idea what to pick.
             <br />
-            SaulSilver interviews you.
+            Saul Silver interviews you.
             <br />
             Verifies the pick.
             <br />
@@ -71,12 +94,12 @@ export default function Home() {
           </p>
 
           <div className="mt-10 flex animate-fade-in-up flex-col items-center justify-center gap-3 sm:flex-row" style={{ animationDelay: "200ms" }}>
-            <Button size="lg" className="w-full px-8 glow-resin sm:w-auto" asChild>
+            <Button size="lg" className="w-full px-8 glow-resin bg-gradient-to-t from-resin-dark to-resin text-noir font-semibold shadow-inner shadow-white/30 hover:brightness-110 border border-resin-light/50 transition-all sm:w-auto" asChild>
               <Link href="/app?intent=match">
-                Match me <ArrowRight className="ml-1.5 h-4 w-4" />
+                Consult the Sommelier <ArrowRight className="ml-1.5 h-4 w-4" />
               </Link>
             </Button>
-            <Button size="lg" variant="secondary" className="w-full px-8 sm:w-auto" asChild>
+            <Button size="lg" variant="secondary" className="w-full px-8 bg-noir/40 backdrop-blur-md border border-white/10 hover:bg-white/10 text-ink shadow-lg transition-all sm:w-auto" asChild>
               <Link href="/app?intent=verify">
                 Is this brand any good?
               </Link>
@@ -90,7 +113,7 @@ export default function Home() {
       </section>
 
       {/* The reframe — the core thesis */}
-      <section className="border-y border-border bg-noir-soft py-28">
+      <section className="border-y border-border bg-noir/30 backdrop-blur-3xl py-28">
         <div className="mx-auto max-w-5xl px-6">
           <div className="grid gap-px overflow-hidden rounded-2xl border border-border bg-border md:grid-cols-2">
             <ReframeCell
@@ -116,7 +139,7 @@ export default function Home() {
           <p className="mx-auto mt-10 max-w-2xl text-center font-display text-2xl font-medium leading-snug text-ink">
             Other agents find you the cheapest gummy.
             <br />
-            <span className="italic text-resin">SaulSilver finds you the right one.</span>
+            <span className="italic text-resin">Saul Silver finds you the right one.</span>
           </p>
         </div>
       </section>
@@ -135,10 +158,10 @@ export default function Home() {
             <DoorCard
               icon={<Sparkles className="h-6 w-6" />}
               tone="resin"
-              kicker="Match me"
+              kicker="Consult"
               title="The sommelier"
               body="Tell it your vibe. Sleep, anxiety, focus, euphoria. First-timer or seasoned. It interviews you, then picks."
-              cta="Get matched"
+              cta="Start interview"
               badge="Headliner"
             />
             <DoorCard
@@ -146,7 +169,7 @@ export default function Home() {
               tone="frost"
               kicker="Trust check"
               title="Is this brand legit?"
-              body="A friend told you to buy X. SaulSilver checks the lab tests, the license, the reviews. Tells you straight."
+              body="A friend told you to buy X. Saul Silver checks the lab tests, the license, the reviews. Tells you straight."
               cta="Verify a brand"
             />
             <DoorCard
@@ -162,7 +185,7 @@ export default function Home() {
       </section>
 
       {/* The good vice — cost-per-hour reframe */}
-      <section className="border-y border-border bg-noir-soft py-28">
+      <section className="border-y border-border bg-noir/30 backdrop-blur-3xl py-28">
         <div className="mx-auto max-w-5xl px-6">
           <div className="mb-14 text-center">
             <p className="text-sm font-medium uppercase tracking-[0.2em] text-resin">the good vice</p>
@@ -189,7 +212,7 @@ export default function Home() {
           {/* The math — two-column comparison */}
           <div className="grid gap-px overflow-hidden rounded-2xl border border-border bg-border md:grid-cols-2">
             {/* Beer */}
-            <div className="bg-noir-card p-8">
+            <div className="bg-noir/50 backdrop-blur-2xl shadow-xl border-white/5 p-8">
               <div className="mb-6 flex items-center gap-3">
                 <span className="text-3xl">🍺</span>
                 <span className="font-display text-xl font-medium text-ink-soft">One pint</span>
@@ -202,7 +225,7 @@ export default function Home() {
               </div>
             </div>
             {/* Gummy */}
-            <div className="bg-noir-card p-8 glow-resin">
+            <div className="bg-noir/50 backdrop-blur-2xl shadow-xl border-white/5 p-8 glow-resin">
               <div className="mb-6 flex items-center gap-3">
                 <Leaf className="h-7 w-7 text-resin" />
                 <span className="font-display text-xl font-medium text-ink">One gummy</span>
@@ -228,23 +251,26 @@ export default function Home() {
       </section>
 
       {/* The brands marquee */}
-      <section className="border-y border-border bg-noir-soft py-20">
+      <section className="border-y border-border bg-noir/30 backdrop-blur-3xl py-20">
         <div className="mx-auto max-w-5xl px-6 text-center">
           <p className="text-xs uppercase tracking-[0.25em] text-ink-muted">the menu, today</p>
           <h2 className="mt-4 font-display text-3xl font-medium text-ink">
-            13 brands. Every Indian cannabis gummy worth knowing.
+            13 brands. Every Indian Vijaya edible worth knowing.
           </h2>
           <p className="mx-auto mt-4 max-w-xl text-ink-soft">
             Curated, not scraped. Each verified for cannabinoid profile, lab status, and legality before it hits the menu.
           </p>
           <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
             {BRANDS.map((b) => (
-              <span
-                key={b}
-                className="rounded-full border border-border bg-noir-card px-4 py-2 text-sm text-ink-soft transition-colors hover:border-resin/40 hover:text-resin-light"
+              <a
+                key={b.name}
+                href={b.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-full border border-border bg-noir/50 backdrop-blur-2xl shadow-xl border-white/5 px-4 py-2 text-sm text-ink-soft transition-colors hover:border-resin/40 hover:bg-resin/5 hover:text-resin-light"
               >
-                {b}
-              </span>
+                {b.name}
+              </a>
             ))}
           </div>
         </div>
@@ -259,12 +285,12 @@ export default function Home() {
               What closes today. What's coming.
             </h2>
             <p className="mx-auto mt-5 max-w-2xl text-ink-soft">
-              Prava issues a virtual card scoped to one merchant. For that card to land, the merchant needs a real checkout. SaulSilver is built for both realities.
+              Prava issues a virtual card scoped to one merchant. For that card to land, the merchant needs a real checkout. Saul Silver is built for both realities.
             </p>
           </div>
 
           <div className="grid gap-6 md:grid-cols-2">
-            <Card className="border-resin/30 bg-noir-card p-8 glow-resin">
+            <Card className="border-resin/30 bg-noir/50 backdrop-blur-2xl shadow-xl border-white/5 p-8 glow-resin">
               <div className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-resin/15 text-resin">
                 <Shield className="h-6 w-6" />
               </div>
@@ -279,7 +305,7 @@ export default function Home() {
               </p>
             </Card>
 
-            <Card className="border-leaf/30 bg-noir-card p-8 glow-leaf">
+            <Card className="border-leaf/30 bg-noir/50 backdrop-blur-2xl shadow-xl border-white/5 p-8 glow-leaf">
               <div className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-leaf/15 text-leaf-light">
                 <Flame className="h-6 w-6" />
               </div>
@@ -298,7 +324,7 @@ export default function Home() {
       </section>
 
       {/* How it works — compressed */}
-      <section className="border-t border-border bg-noir-soft py-28">
+      <section className="border-t border-border bg-noir/30 backdrop-blur-3xl py-28">
         <div className="mx-auto max-w-4xl px-6">
           <div className="mb-14 text-center">
             <p className="text-sm font-medium uppercase tracking-[0.2em] text-resin">the loop</p>
@@ -326,12 +352,12 @@ export default function Home() {
             <span className="italic text-resin">Start matching.</span>
           </h2>
           <p className="mx-auto mt-6 max-w-md text-ink-soft">
-            The first cannabis concierge that interviews you, verifies the pick, and closes the deal.
+            The first Vijaya concierge that interviews you, verifies the pick, and closes the deal.
           </p>
           <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <Button size="lg" className="w-full px-8 glow-resin sm:w-auto" asChild>
+            <Button size="lg" className="w-full px-8 glow-resin bg-gradient-to-t from-resin-dark to-resin text-noir font-semibold shadow-inner shadow-white/30 hover:brightness-110 border border-resin-light/50 transition-all sm:w-auto" asChild>
               <Link href="/app?intent=match">
-                Talk to SaulSilver <ArrowRight className="ml-1.5 h-4 w-4" />
+                Talk to Saul Silver <ArrowRight className="ml-1.5 h-4 w-4" />
               </Link>
             </Button>
           </div>
@@ -339,7 +365,7 @@ export default function Home() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-border bg-noir-soft py-12">
+      <footer className="border-t border-border bg-noir/30 backdrop-blur-3xl py-12">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-6 text-center sm:flex-row sm:text-left">
           <Wordmark />
           <p className="text-sm text-ink-muted">
@@ -353,7 +379,7 @@ export default function Home() {
         </div>
         <div className="mx-auto mt-6 max-w-6xl px-6">
           <p className="text-center text-xs text-ink-muted">
-            For legal markets only. Not medical advice. Not a seller. SaulSilver is a discovery and trust layer.
+            For legal markets only. Not medical advice. Not a seller. Saul Silver is a discovery and trust layer.
           </p>
         </div>
       </footer>
@@ -376,7 +402,7 @@ function ReframeCell({
 }) {
   const isResin = tone === "resin";
   return (
-    <div className={`p-10 ${isResin ? "bg-noir-card" : "bg-noir"}`}>
+    <div className={`p-10 ${isResin ? "bg-noir/50 backdrop-blur-2xl shadow-xl border-white/5" : "bg-noir"}`}>
       <p className={`mb-5 text-xs uppercase tracking-[0.2em] ${isResin ? "text-resin" : "text-ink-muted"}`}>
         {label}
       </p>
@@ -415,7 +441,7 @@ function DoorCard({
   }[tone];
 
   return (
-    <Card className={`group relative flex flex-col bg-noir-card p-8 transition-colors ${toneMap.hover}`}>
+    <Card className={`group relative flex flex-col bg-noir/50 backdrop-blur-2xl shadow-xl border-white/5 p-8 transition-colors ${toneMap.hover}`}>
       {badge && (
         <Badge variant="resin" className="absolute right-6 top-6">{badge}</Badge>
       )}
@@ -437,7 +463,7 @@ function DoorCard({
 
 function StepRow({ n, title, body }: { n: string; title: string; body: string }) {
   return (
-    <div className="flex items-start gap-6 bg-noir-card p-7">
+    <div className="flex items-start gap-6 bg-noir/50 backdrop-blur-2xl shadow-xl border-white/5 p-7">
       <span className="font-display text-3xl font-semibold text-resin/50">{n}</span>
       <div>
         <h3 className="font-display text-lg font-medium text-ink">{title}</h3>

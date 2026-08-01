@@ -1,242 +1,275 @@
 /**
- * Prava payment client.
+ * Prava client — built to the official prava-sdk-integration skill template.
  *
- * Implements the real Prava SDK/API flow:
- *   1. Create a session (merchant, amount, mandate)
- *   2. User approves via passkey (handled by Prava's hosted surface)
- *   3. Poll GET /v1/sessions/{id}/payment-result → awaiting_result yields token + dynamic_cvv
- *   4. Agent uses those credentials at merchant checkout
- *   5. POST /v1/sessions/{id}/report-status → APPROVED / DECLINED
+ * ONE session API for everything. No mandate_setup, no integration_type —
+ * those fields don't exist in the canonical Session API reference. A plain
+ * session with a real merchant + real amount is the card-enrollment flow;
+ * Prava auto-detects returning users and shows their saved cards.
  *
- * Until PRAVA_SECRET_KEY is set, runs in MOCK mode that simulates the exact
- * same lifecycle so the UI lights up identically.
- *
- * Refs:
- *   https://docs.prava.space/api-reference/create-session
- *   https://docs.prava.space/api-reference/get-payment-result
- *   https://docs.prava.space/api-reference/report-status
+ * Refs (from ~/.agents/skills/prava-sdk-integration):
+ *   references/session-api-reference.md
+ *   references/integration-flow.md
+ *   templates/nextjs/server-action.ts
  */
 
-import type { MedicineItem } from "./types";
+// Matches the skill's env convention exactly.
+const BACKEND_URL =
+  process.env.NEXT_PUBLIC_BACKEND_URL || "https://sandbox.api.prava.space";
+const MERCHANT_SECRET_KEY = process.env.MERCHANT_SECRET_KEY;
 
-const PRAVA_BASE =
-  process.env.PRAVA_BASE_URL ??
-  (process.env.PRAVA_SECRET_KEY?.startsWith("sk_test") ? "https://sandbox.api.prava.space" : "https://api.prava.space");
+export const IS_MOCK = !MERCHANT_SECRET_KEY || MERCHANT_SECRET_KEY.includes("YOUR_SECRET_KEY");
 
-const SECRET_KEY = process.env.PRAVA_SECRET_KEY;
-export const IS_MOCK = !SECRET_KEY;
+// ── Types (from the skill's SessionResponse / PaymentResult) ─────────────────
 
-export interface PravaLineItem {
-  description: string;
-  unit_price: string;
-  quantity?: number;
+export interface SessionResponse {
+  session_id: string;
+  session_token: string;
+  iframe_url: string;
+  order_id: string;
+  expires_at: string;
+}
+
+export interface PaymentLineItem {
+  txn_ref_id: string;
+  merchant_name: string;
+  merchant_url: string;
+  total_amount: string;
+  status: string;
+  token: string | null;
+  dynamic_cvv: string | null;
+  expiry_month: string | null;
+  expiry_year: string | null;
+}
+
+export interface PaymentTransaction {
+  txn_id: string;
+  status: string;
+  line_items: PaymentLineItem[];
+  error?: { code: string; message: string };
+}
+
+export interface PaymentResultResponse {
+  session_id: string;
+  order_id: string | null;
+  status: "pending" | "awaiting_result" | "completed" | "failed" | string;
+  transactions: PaymentTransaction[];
 }
 
 export interface CreateSessionInput {
   userId: string;
   userEmail: string;
-  merchantName: string;
+  totalAmount: string; // real amount, e.g. "49.99" — never "0.00"
+  currency: string;
+  description?: string;
+  merchantName: string; // the DESTINATION merchant (where the user buys from)
   merchantUrl: string;
-  merchantCountry: string; // ISO2
-  totalAmount: string; // string per Prava API
-  currency: string; // "INR"
-  items: PravaLineItem[];
+  merchantCountryIso2: string;
+  productDescription: string;
+  /** Reuse a saved card (skip card entry — Prava shows saved-cards list) */
+  cardId?: string;
 }
 
-export interface PravaSession {
-  sessionId: string;
-  orderId?: string;
-  /** Hosted Prava surface — embed in iframe for card entry + passkey approval */
-  iframeUrl?: string;
-  sessionToken?: string;
-  expiresAt?: string;
-  status: "pending" | "awaiting_result" | "completed" | "failed";
-  /** Present when status === awaiting_result */
-  credentials?: {
-    token: string;          // virtual card number (network token)
-    dynamicCvv: string;     // single-use CVV
-    expiryMonth: string;
-    expiryYear: string;
-  };
-  txnRefId?: string;
-  error?: { code: string; message: string };
-}
+// ── Session creation (server-side) ───────────────────────────────────────────
 
-export interface ReportStatusInput {
-  sessionId: string;
-  txnRefId: string;
-  status: "APPROVED" | "DECLINED";
-  amountPaid?: string;
-}
+export async function createSession(input: CreateSessionInput): Promise<SessionResponse> {
+  if (IS_MOCK) return createSessionMock(input);
 
-/** Build the purchase_context line items from our medicine items. */
-export function toPravaLineItems(items: MedicineItem[]): PravaLineItem[] {
-  return items.map((item) => ({
-    description: `${item.name}${item.dosage ? ` ${item.dosage}` : ""}${item.notes ? ` (${item.notes})` : ""}`,
-    unit_price: "0", // populated by caller with real price
-    quantity: item.quantity,
-  }));
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// REAL Prava API calls
-// ─────────────────────────────────────────────────────────────────────────────
-
-async function pravaFetch(path: string, body: unknown, method = "POST") {
-  if (!SECRET_KEY) throw new Error("PRAVA_SECRET_KEY not set");
-  const res = await fetch(`${PRAVA_BASE}${path}`, {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${SECRET_KEY}`,
-    },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(`Prava API ${res.status}: ${JSON.stringify(data)}`);
-  }
-  return data;
-}
-
-async function createSessionReal(input: CreateSessionInput): Promise<PravaSession> {
-  const data = await pravaFetch("/v1/sessions", {
+  const body: Record<string, unknown> = {
     user_id: input.userId,
     user_email: input.userEmail,
     total_amount: input.totalAmount,
     currency: input.currency,
+    description: input.description || "Purchase",
+    // integration_type:"embedding" → undocumented but functional embedded skin.
+    // Hides the redundant merchant-header/product-details/shipping sections
+    // inside the iframe (we show them in our own UI). Without it, Prava renders
+    // the full hosted checkout including a shipping-details form to re-fill.
+    integration_type: "embedding",
     purchase_context: [
       {
         merchant_details: {
           name: input.merchantName,
           url: input.merchantUrl,
-          country_code_iso2: input.merchantCountry,
+          country_code_iso2: input.merchantCountryIso2,
         },
-        product_details: input.items.map((i) => ({
-          description: i.description,
-          unit_price: i.unit_price,
-          quantity: i.quantity ?? 1,
-        })),
+        product_details: [
+          {
+            description: input.productDescription,
+            unit_price: input.totalAmount,
+            quantity: 1,
+          },
+        ],
+        effective_until_minutes: 15,
       },
     ],
-  });
-  return {
-    sessionId: data.session_id,
-    orderId: data.order_id,
-    iframeUrl: data.iframe_url,
-    sessionToken: data.session_token,
-    expiresAt: data.expires_at,
-    status: "pending",
   };
-}
 
-async function getPaymentResultReal(sessionId: string): Promise<PravaSession> {
-  const data = await pravaFetch(`/v1/sessions/${sessionId}/payment-result`, {}, "GET");
-  const txn = data.transactions?.[0];
-  const lineItem = txn?.line_items?.[0];
-  return {
-    sessionId: data.session_id,
-    orderId: data.order_id,
-    status: data.status,
-    credentials:
-      data.status === "awaiting_result" && lineItem
-        ? {
-            token: lineItem.token,
-            dynamicCvv: lineItem.dynamic_cvv,
-            expiryMonth: lineItem.expiry_month,
-            expiryYear: lineItem.expiry_year,
-          }
-        : undefined,
-    txnRefId: lineItem?.txn_ref_id,
-    error: data.status === "failed" ? txn?.error : undefined,
-  };
-}
-
-async function reportStatusReal(input: ReportStatusInput): Promise<void> {
-  await pravaFetch(`/v1/sessions/${input.sessionId}/report-status`, {
-    txn_ref_id: input.txnRefId,
-    txn_status: input.status,
-    amount_paid: input.amountPaid,
-  });
-}
-
-async function revokeSessionReal(sessionId: string): Promise<void> {
-  // revoke takes an empty body per the Prava docs (POST /v1/sessions/:id/revoke).
-  // pravaFetch JSON.stringifies the body; {} is acceptable.
-  await pravaFetch(`/v1/sessions/${sessionId}/revoke`, {});
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// MOCK implementations — same lifecycle, no network
-// ─────────────────────────────────────────────────────────────────────────────
-
-const mockSessions = new Map<string, PravaSession & { createdAt: number }>();
-
-async function createSessionMock(input: CreateSessionInput): Promise<PravaSession> {
-  const sessionId = `ses_mock_${Date.now().toString(36)}`;
-  const session: PravaSession & { createdAt: number } = {
-    sessionId,
-    status: "pending",
-    createdAt: Date.now(),
-  };
-  mockSessions.set(sessionId, session);
-  return { ...session };
-}
-
-async function getPaymentResultMock(sessionId: string): Promise<PravaSession> {
-  const session = mockSessions.get(sessionId);
-  if (!session) throw new Error(`Mock session ${sessionId} not found`);
-  const elapsed = Date.now() - session.createdAt;
-  // Simulate: pending for 1s, then awaiting_result with credentials
-  if (elapsed < 1500) {
-    return { ...session, status: "pending" };
+  // Pre-select a saved card if we have one (repeat-purchase / passkey-only flow).
+  if (input.cardId) {
+    body.card = { card_id: input.cardId };
   }
-  if (session.status === "awaiting_result" || session.status === "completed") {
-    return session;
-  }
-  const updated: PravaSession & { createdAt: number } = {
-    ...session,
-    status: "awaiting_result",
-    txnRefId: `txnref_mock_${sessionId.slice(-8)}`,
-    credentials: {
-      token: "0000000000000000", // mock-only placeholder, never a real card
-      dynamicCvv: "000",
-      expiryMonth: "12",
-      expiryYear: "30",
+
+  const res = await fetch(`${BACKEND_URL}/v1/sessions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${MERCHANT_SECRET_KEY}`,
     },
-  };
-  mockSessions.set(sessionId, updated);
-  return { ...updated };
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: { message: "Unknown error" } }));
+    throw new Error(err.error?.message || `Failed to create session (HTTP ${res.status})`);
+  }
+
+  return res.json();
 }
 
-async function reportStatusMock(input: ReportStatusInput): Promise<void> {
-  const session = mockSessions.get(input.sessionId);
-  if (!session) throw new Error(`Mock session ${input.sessionId} not found`);
-  mockSessions.set(input.sessionId, {
-    ...session,
-    status: input.status === "APPROVED" ? "completed" : "failed",
+// ── Poll for payment result (cache-busted per skill gotcha) ──────────────────
+
+export async function pollPaymentResult(sessionId: string): Promise<PaymentResultResponse> {
+  if (IS_MOCK) return pollPaymentResultMock(sessionId);
+
+  const res = await fetch(
+    `${BACKEND_URL}/v1/sessions/${sessionId}/payment-result?_t=${Date.now()}`,
+    {
+      method: "GET",
+      headers: { Authorization: `Bearer ${MERCHANT_SECRET_KEY}` },
+      cache: "no-store" as RequestCache,
+      next: { revalidate: 0 },
+    }
+  );
+
+  if (!res.ok) {
+    if (res.status === 404) throw new Error("Session not found");
+    const err = await res.json().catch(() => ({ error: { message: "Unknown error" } }));
+    throw new Error(err.error?.message || `Failed to poll result (HTTP ${res.status})`);
+  }
+
+  return res.json();
+}
+
+// ── Report outcome (required — or transactions stick in awaiting_result) ─────
+
+export async function reportStatus(
+  sessionId: string,
+  txnRefId: string,
+  txnStatus: "APPROVED" | "DECLINED"
+): Promise<void> {
+  if (IS_MOCK) return;
+
+  await fetch(`${BACKEND_URL}/v1/sessions/${sessionId}/report-status`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${MERCHANT_SECRET_KEY}`,
+    },
+    body: JSON.stringify({ txn_ref_id: txnRefId, txn_status: txnStatus }),
   });
 }
 
-async function revokeSessionMock(sessionId: string): Promise<void> {
-  const session = mockSessions.get(sessionId);
-  if (session) {
-    mockSessions.set(sessionId, { ...session, status: "failed" });
+// ── List saved cards (for showing card-on-file) ──────────────────────────────
+
+export interface SavedCard {
+  card_id: string;
+  card_last4: string | null;
+  card_brand: string | null;
+  card_exp_month: number | null;
+  card_exp_year: number | null;
+}
+
+export async function listCards(userId: string): Promise<SavedCard[]> {
+  if (IS_MOCK) return [];
+
+  const res = await fetch(
+    `${BACKEND_URL}/v1/listCards?customer_id=${encodeURIComponent(userId)}`,
+    { headers: { Authorization: `Bearer ${MERCHANT_SECRET_KEY}` } }
+  );
+  if (!res.ok) return [];
+  const data = await res.json();
+  return (data.cards ?? []).map((c: Record<string, unknown>) => ({
+    card_id: c.card_id as string,
+    card_last4: (c.card_last4 as string) ?? null,
+    card_brand: (c.card_brand as string) ?? null,
+    card_exp_month: (c.card_exp_month as number) ?? null,
+    card_exp_year: (c.card_exp_year as number) ?? null,
+  }));
+}
+
+// ── Delete a saved card (retires its network token) ──────────────────────────
+
+export async function deleteCard(customerId: string, cardId: string): Promise<void> {
+  if (IS_MOCK) return;
+
+  const res = await fetch(`${BACKEND_URL}/v1/deleteCard`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${MERCHANT_SECRET_KEY}`,
+    },
+    body: JSON.stringify({
+      customer_id: customerId,
+      card_id: cardId,
+      reason: "CUSTOMER_CONFIRMED",
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `Failed to delete card (HTTP ${res.status})`);
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Public API — switches on IS_MOCK automatically
-// ─────────────────────────────────────────────────────────────────────────────
+// ── Mock implementations (no secret key) ─────────────────────────────────────
+// Same lifecycle so the UI lights up without keys.
 
-// Export both the bound object (auto-switches on IS_MOCK) AND the individual
-// functions so callers can override per-request (e.g. demo mode forcing mock
-// even when the real secret key is configured).
-export { createSessionMock, getPaymentResultMock, reportStatusMock, revokeSessionMock };
+const mockSessions = new Map<string, { createdAt: number; status: string }>();
 
-export const prava = {
-  createSession: IS_MOCK ? createSessionMock : createSessionReal,
-  getPaymentResult: IS_MOCK ? getPaymentResultMock : getPaymentResultReal,
-  reportStatus: IS_MOCK ? reportStatusMock : reportStatusReal,
-  revoke: IS_MOCK ? revokeSessionMock : revokeSessionReal,
-};
+function createSessionMock(input: CreateSessionInput): SessionResponse {
+  const id = `sess_mock_${Date.now().toString(36)}`;
+  mockSessions.set(id, { createdAt: Date.now(), status: "pending" });
+  return {
+    session_id: id,
+    session_token: `mock_token_${id}`,
+    iframe_url: `https://sandbox.collect.prava.space?session=${id}`,
+    order_id: `ord_mock_${id}`,
+    expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+  };
+  // NOTE: input intentionally unused in mock — real path uses it.
+  void input;
+}
+
+function pollPaymentResultMock(sessionId: string): PaymentResultResponse {
+  const s = mockSessions.get(sessionId);
+  if (!s) throw new Error("Session not found");
+  const elapsed = Date.now() - s.createdAt;
+  // pending for 2s, then completed with a credential
+  if (elapsed < 2000) {
+    return { session_id: sessionId, order_id: null, status: "pending", transactions: [] };
+  }
+  s.status = "completed";
+  return {
+    session_id: sessionId,
+    order_id: `ord_mock_${sessionId}`,
+    status: "completed",
+    transactions: [
+      {
+        txn_id: `txn_mock_${sessionId}`,
+        status: "completed",
+        line_items: [
+          {
+            txn_ref_id: `tli_mock_${sessionId}`,
+            merchant_name: "Mock Merchant",
+            merchant_url: "https://example.com",
+            total_amount: "0.01",
+            status: "completed",
+            token: "0000000000000000",
+            dynamic_cvv: "000",
+            expiry_month: "12",
+            expiry_year: "2030",
+          },
+        ],
+      },
+    ],
+  };
+}

@@ -8,6 +8,9 @@
 - **Two-Tier Landing Section:** Added a "What works today / What comes next" section explaining the Prava merchant constraint honestly — online pharmacies close the payment loop live; local stores are the roadmap (merchant onboarding or UPI rail).
 - **One-Click Demo Prompts:** Empty intake state now shows three clickable sample-request pills so judges can trigger the full flow in one click.
 - **Repo Cleanup:** Untracked `senso-context/` (104 generated files) and `fetch_pharmacies.js` from git and added them to `.gitignore`. Local copies retained.
+- **Generative UI Refactor**: Removed the rigid, hardcoded state machine (`stage`) from `AppChat` and implemented a native OpenAI endpoint (`/api/chat`) using function calling to seamlessly render React components natively.
+- **Smart Quick-Picks**: Added contextual UI chips (e.g., "More CBD", "More THC", "Beginner") that intelligently appear based on the AI's intent, enabling a tap-to-chat flow within a conversational UI.
+- **Chat History Sync**: Restored the background Supabase auto-save (`/api/chats/save`) and ported URL parsing logic (`?chat=ID`) to reliably load historical conversations from the database into the UI.
 
 ## 2026-08-01
 - **UI Overhaul (Mobile & Desktop):** Implemented a high-end glassmorphic UI for the mock chat widget and primary buttons on the homepage.

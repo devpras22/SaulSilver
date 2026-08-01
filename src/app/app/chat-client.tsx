@@ -16,6 +16,7 @@ import {
   Clock,
   Upload,
   RefreshCw,
+  Loader2,
 } from "lucide-react";
 import type {
   Brand,
@@ -29,20 +30,8 @@ import type {
 } from "@/lib/types";
 import { EFFECTS, TOLERANCES } from "@/lib/types";
 import { formatINR } from "@/lib/utils";
-import { usePaymentMode } from "@/lib/payment-mode";
-
-type Stage =
-  | "greeting"
-  | "interview_effect"
-  | "interview_tolerance"
-  | "interview_ratio"
-  | "matching"
-  | "recommending"
-  | "verifying"
-  | "verifying_result"
-  | "browsing"
-  | "paying"
-  | "completed";
+import { AddressDialog } from "@/components/header-address";
+import { PravaPaymentModal } from "@/components/prava-payment-modal";
 
 export default function AppChat({
   savedAddress,
@@ -52,19 +41,48 @@ export default function AppChat({
   intent: Intent;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [chatId, setChatId] = useState<string | null>(null);
   const [input, setInput] = useState("");
-  const [stage, setStage] = useState<Stage>("greeting");
-  const [profile, setProfile] = useState<UserProfile>({ intent, region: "IN" });
   const [busy, setBusy] = useState(false);
-  const { demoMode } = usePaymentMode();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [addressModalOpen, setAddressModalOpen] = useState(false);
+  const [savedCardId, setSavedCardId] = useState<string | null>(null);
+
+  // Fetch the user's saved card so the Order button can reuse it (passkey-only
+  // checkout — no card form reappears).
+  useEffect(() => {
+    fetch("/api/wallet/cards")
+      .then((r) => r.json())
+      .then((data) => {
+        const card = (data.cards ?? [])[0];
+        if (card?.prava_card_id) setSavedCardId(card.prava_card_id);
+      })
+      .catch(() => {});
+  }, []);
+  const [pendingPayment, setPendingPayment] = useState<{product: CannabisProduct, brand: Brand} | null>(null);
+
+  const searchParams = useSearchParams();
 
   // ── Greeting on mount — different opening per intent ──
   useEffect(() => {
+    const loadChatId = searchParams.get("chat");
+    if (loadChatId) {
+      fetch(`/api/chats/${loadChatId}`)
+        .then(r => r.json())
+        .then(s => {
+          if (s.messages?.length) {
+            setMessages(s.messages);
+            setChatId(loadChatId);
+          }
+        })
+        .catch(() => {});
+      return;
+    }
+
     const openers: Record<Intent, string> = {
-      match: "I'm SaulSilver. Tell me the vibe — sleep, focus, calm, euphoria — and I'll find your gummy.",
-      verify: "I'm SaulSilver. Name a brand and I'll tell you if it's legit. Lab tests, licence, the works.",
-      browse: "I'm SaulSilver. Here's what's on the menu. Ask me about any of them.",
+      match: "I'm Saul Silver. Tell me if you are looking for better sleep, deep focus, or just a calm evening. I will find the perfect recommendation for you.",
+      verify: "I'm Saul Silver. Drop a brand name below. I'll check their lab tests and licenses to tell you if they're legit.",
+      browse: "I'm Saul Silver. The menu is open. What catches your eye?",
     };
     setMessages([
       {
@@ -75,14 +93,16 @@ export default function AppChat({
         timestamp: new Date().toISOString(),
       },
     ]);
-    const startStage: Stage = intent === "match" ? "interview_effect" : intent === "browse" ? "browsing" : "verifying";
-    setStage(startStage);
     if (intent === "browse") loadCatalog();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [intent]);
+  }, [intent, searchParams]);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    if (messages.length > 1) {
+      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    } else {
+      scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+    }
   }, [messages, busy]);
 
   const pushAssistant = useCallback(
@@ -102,74 +122,92 @@ export default function AppChat({
     []
   );
 
+  // Save chat to history whenever messages update (if there is at least one user message)
+  useEffect(() => {
+    const hasUserMsg = messages.some(m => m.role === "user");
+    if (!hasUserMsg) return;
+
+    const timer = setTimeout(() => {
+      fetch("/api/chats/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: chatId || undefined, // undefined will insert a new row
+          messages,
+        }),
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (data.id && data.id !== chatId) setChatId(data.id);
+      })
+      .catch(() => {});
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [messages, chatId]);
+
   // ── Handle user input ──
-  const handleSend = async () => {
-    if (!input.trim() || busy) return;
-    const userText = input.trim();
-    setInput("");
-    const ta = document.querySelector("textarea");
-    if (ta) ta.style.height = "auto";
+  const handleSend = async (overrideText?: string | React.MouseEvent | React.KeyboardEvent) => {
+    const textToUse = typeof overrideText === "string" ? overrideText : input.trim();
+    if (!textToUse || busy) return;
+    
+    if (typeof overrideText !== "string") {
+      setInput("");
+      const ta = document.querySelector("textarea");
+      if (ta) ta.style.height = "auto";
+    }
+    
+    const userText = textToUse;
     setMessages((m) => [
       ...m,
       { id: `user_${Date.now()}`, role: "user", content: userText, kind: "text", timestamp: new Date().toISOString() },
     ]);
 
-    if (stage === "verifying" || stage === "verifying_result") {
-      await verifyBrand(userText);
-      return;
-    }
+    setBusy(true);
+    pushAssistant("Thinking...", "thinking");
 
-    if (stage === "browsing") {
-      pushAssistant("Tell me the vibe you're after and I'll match you properly. Or name a brand and I'll verify it.", "text");
-      setStage("interview_effect");
-      return;
-    }
+    try {
+      const currentMessages = messages
+        .filter(m => m.role === "user" || m.role === "assistant")
+        .map(m => ({ role: m.role, content: m.content || "(Sent a dashboard widget)" }));
+      
+      currentMessages.push({ role: "user", content: userText });
 
-    // In interview, try to match their words to an effect
-    if (stage === "interview_effect" || stage === "greeting") {
-      const lower = userText.toLowerCase();
-      const matched = EFFECTS.find(
-        (e) => lower.includes(e.value) || lower.includes(e.label.toLowerCase())
-      );
-      if (matched) {
-        setProfile((p) => ({ ...p, effect: matched.value }));
-        pushAssistant(`${matched.blurb}. How experienced are you?`, "text");
-        setStage("interview_tolerance");
-      } else {
-        pushAssistant("Sleep, focus, calm, euphoria, pain relief, couch-lock — what's the goal?", "text");
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: currentMessages }),
+      });
+      const data = await res.json();
+      
+      setMessages((m) => m.filter((msg) => msg.kind !== "thinking"));
+
+      if (data.tool_calls && data.tool_calls.length > 0) {
+        for (const tool of data.tool_calls) {
+          if (tool.function.name === "matchProducts") {
+            const args = JSON.parse(tool.function.arguments);
+            pushAssistant(`Let me see what I have for ${args.effect}...`, "text");
+            await runMatch({ ...args, intent: "match", region: "IN" });
+          } else if (tool.function.name === "researchBrand") {
+            const args = JSON.parse(tool.function.arguments);
+            pushAssistant(`Sure, pulling up the dossier on ${args.brandName}...`, "text");
+            await verifyBrand(args.brandName);
+          }
+        }
+      } else if (data.content) {
+        pushAssistant(data.content, "text");
       }
+    } catch (e) {
+      setMessages((m) => m.filter((msg) => msg.kind !== "thinking"));
+      pushAssistant("Sorry, my brain glitched. Try again.", "text");
+    } finally {
+      setBusy(false);
     }
-  };
-
-  // ── Quick-pick handlers ──
-  const pickEffect = (effect: Effect) => {
-    const eff = EFFECTS.find((e) => e.value === effect)!;
-    setMessages((m) => [...m, { id: `user_eff_${Date.now()}`, role: "user", content: eff.label, kind: "text", timestamp: new Date().toISOString() }]);
-    setProfile((p) => ({ ...p, effect }));
-    pushAssistant(`${eff.blurb}. How experienced are you?`, "text");
-    setStage("interview_tolerance");
-  };
-
-  const pickTolerance = (tolerance: Tolerance) => {
-    const tol = TOLERANCES.find((t) => t.value === tolerance)!;
-    setMessages((m) => [...m, { id: `user_tol_${Date.now()}`, role: "user", content: tol.label, kind: "text", timestamp: new Date().toISOString() }]);
-    setProfile((p) => ({ ...p, tolerance }));
-    pushAssistant("Lean THC, lean CBD, balanced, or you decide?", "text");
-    setStage("interview_ratio");
-  };
-
-  const pickRatio = (ratio: UserProfile["ratioPreference"]) => {
-    const label = ratio === "you_decide" ? "You decide" : (ratio ?? "balanced");
-    setMessages((m) => [...m, { id: `user_ratio_${Date.now()}`, role: "user", content: label, kind: "text", timestamp: new Date().toISOString() }]);
-    const updated = { ...profile, ratioPreference: ratio };
-    setProfile(updated);
-    runMatch(updated);
   };
 
   // ── Run the sommelier match ──
   const runMatch = async (p: UserProfile) => {
     setBusy(true);
-    setStage("matching");
     pushAssistant("On it. Checking what's on the menu…", "thinking");
     try {
       const res = await fetch("/api/match", {
@@ -182,17 +220,14 @@ export default function AppChat({
 
       if (data.empty || !data.matches?.length) {
         pushAssistant("The catalog's thin right now. Tell me a brand and I'll research it live — or check back.", "text");
-        setStage("verifying");
         return;
       }
 
       await new Promise((r) => setTimeout(r, 600));
       pushAssistant("", "recommendation", { matches: data.matches, profile: p });
-      setStage("recommending");
     } catch (e) {
       setMessages((m) => m.filter((msg) => msg.kind !== "thinking"));
       pushAssistant(`Match failed: ${e instanceof Error ? e.message : "unknown error"}.`, "text");
-      setStage("interview_effect");
     } finally {
       setBusy(false);
     }
@@ -201,7 +236,6 @@ export default function AppChat({
   // ── Verify a brand (the trust-check door) ──
   const verifyBrand = async (brandName: string) => {
     setBusy(true);
-    setStage("verifying_result");
     pushAssistant(`Looking into ${brandName}…`, "thinking");
     try {
       const res = await fetch("/api/research", {
@@ -214,11 +248,9 @@ export default function AppChat({
 
       if (data.error) throw new Error(data.error);
       pushAssistant("", "dashboard", { brand: data.brand, products: data.products, research: data.research });
-      setStage("recommending");
     } catch (e) {
       setMessages((m) => m.filter((msg) => msg.kind !== "thinking"));
       pushAssistant(`Couldn't research ${brandName}: ${e instanceof Error ? e.message : "unknown error"}.`, "text");
-      setStage("verifying");
     } finally {
       setBusy(false);
     }
@@ -237,7 +269,7 @@ export default function AppChat({
             score: 0.5,
             reasons: [`${p.pack_count} gummies`, formatINR(p.price_inr)],
           })),
-          profile,
+          profile: { intent: "browse", region: "IN" },
           browse: true,
         });
       }
@@ -246,32 +278,94 @@ export default function AppChat({
     }
   };
 
-  // ── Payment (reuses Prava) ──
-  const runPayment = (product: CannabisProduct, brand: Brand) => {
-    setBusy(true);
-    setStage("paying");
-    const perGummy = Math.round(product.price_inr / product.pack_count);
-    pushAssistant(
-      `${product.name} — ${formatINR(product.price_inr)} (${formatINR(perGummy)}/gummy). ` +
-        `${brand.prescription_required ? "Needs a prescription — upload one or I'll route you to their doctor. " : ""}` +
-        `Paying via Prava…`,
-      "status"
-    );
-    setTimeout(() => {
+  // ── Payment — opens the Prava payment modal ──
+  //
+  // The modal mounts Prava's iframe (PravaCardForm) and polls for completion.
+  // First time: card form → OTP → passkey. Repeat: saved cards → passkey.
+  // On completion: report APPROVED, save the order, prescription email if needed.
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [activePurchase, setActivePurchase] = useState<{ product: CannabisProduct; brand: Brand } | null>(null);
+
+  const runPayment = async (product: CannabisProduct, brand: Brand, skipAddressCheck = false) => {
+    if (!savedAddress && !skipAddressCheck) {
+      setPendingPayment({ product, brand });
+      setAddressModalOpen(true);
+      return;
+    }
+    // Gate: no saved card → tell the user to add one first.
+    if (!savedCardId) {
       pushAssistant(
-        `Done. ${product.name} ordered. ${brand.prescription_required ? "Their doctor will call you within 24h for the prescription." : "Ships pan-India in 2-4 days."}`,
-        "confirmation",
-        { product, brand }
+        `Add a card to your wallet first (top-right) — then I can check you out with just a passkey tap.`,
+        "text"
       );
-      setStage("completed");
+      return;
+    }
+    setActivePurchase({ product, brand });
+    setPaymentModalOpen(true);
+  };
+
+  // Called when the payment modal reports success.
+  const onPaid = async ({ txnRefId, sessionId }: { txnRefId: string; sessionId: string }) => {
+    if (!activePurchase) return;
+    const { product, brand } = activePurchase;
+    setPaymentModalOpen(false);
+    setBusy(true);
+
+    try {
+      // Save the order
+      await fetch("/api/orders/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: [{ id: product.id, name: product.name, quantity: 1, type: "supplement" }],
+          address: savedAddress ?? "",
+          priority: "effect",
+          quote: { pharmacyName: brand.name, total: product.price_inr, deliveryEtaMinutes: 2880 },
+          pravaSessionId: sessionId,
+          pravaTxnRef: txnRefId,
+          paymentMode: "prava",
+          status: "completed",
+        }),
+      });
+
+      // Prescription routing email (if required)
+      let doctorRouted = false;
+      if (brand.prescription_required) {
+        try {
+          const rxRes = await fetch("/api/prescription", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              brandName: brand.name,
+              productName: product.name,
+              orderId: sessionId,
+              doctorRouting: brand.doctor_routing,
+            }),
+          });
+          if (rxRes.ok) doctorRouted = true;
+        } catch {
+          // non-fatal
+        }
+      }
+
+      pushAssistant(
+        doctorRouted
+          ? `Done. ${product.name} ordered and paid. Their doctor will call you within 24h for the prescription.`
+          : `Done. ${product.name} ordered and paid. Ships pan-India in 2-4 days.`,
+        "confirmation",
+        { product, brand, txnRef: txnRefId, sessionId, doctorRouted }
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to save order";
+      pushAssistant(`Payment succeeded but order save failed: ${msg}`, "text");
+    } finally {
       setBusy(false);
-    }, 2000);
+      setActivePurchase(null);
+    }
   };
 
   const reset = () => {
     setMessages([{ id: "welcome2", role: "assistant", kind: "text", content: "Next one. What's the vibe?", timestamp: new Date().toISOString() }]);
-    setProfile({ intent: "match", region: "IN" });
-    setStage("interview_effect");
   };
 
   return (
@@ -281,70 +375,66 @@ export default function AppChat({
           <MessageBubble key={m.id} message={m} onPay={runPayment} />
         ))}
 
-        {/* Effect quick-picks */}
-        {stage === "interview_effect" && !busy && (
-          <div className="flex items-start gap-3 animate-fade-in-up">
-            <Avatar />
-            <div className="w-full max-w-[88%]">
-              <div className="mb-2 flex flex-wrap gap-2">
-                {EFFECTS.map((e) => (
-                  <button
-                    key={e.value}
-                    onClick={() => pickEffect(e.value)}
-                    className="rounded-full border border-border bg-noir-card px-3.5 py-1.5 text-xs text-ink-soft transition-colors hover:border-resin/40 hover:bg-resin/5 hover:text-resin-light"
-                  >
-                    {e.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
+        {(() => {
+          const lastMsg = messages[messages.length - 1];
+          const isAssistant = lastMsg?.role === "assistant" && lastMsg?.kind === "text";
+          const lastText = lastMsg?.content?.toLowerCase() || "";
 
-        {/* Tolerance quick-picks */}
-        {stage === "interview_tolerance" && !busy && (
-          <div className="flex items-start gap-3 animate-fade-in-up">
-            <Avatar />
-            <div className="w-full max-w-[88%] flex flex-wrap gap-2">
-              {TOLERANCES.map((t) => (
-                <button
-                  key={t.value}
-                  onClick={() => pickTolerance(t.value)}
-                  className="rounded-full border border-border bg-noir-card px-4 py-2 text-sm text-ink-soft transition-colors hover:border-resin/40 hover:bg-resin/5 hover:text-resin-light"
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+          const showEffects = messages.length === 1 && intent === "match";
+          const showTolerance = isAssistant && !showEffects && (lastText.includes("tolerance") || lastText.includes("experienced") || lastText.includes("experience") || lastText.includes("beginner"));
+          const showRatio = isAssistant && !showEffects && !showTolerance && (lastText.includes("ratio") || lastText.includes("cbd") || lastText.includes("thc") || lastText.includes("lean"));
 
-        {/* Ratio quick-picks */}
-        {stage === "interview_ratio" && !busy && (
-          <div className="flex items-start gap-3 animate-fade-in-up">
-            <Avatar />
-            <div className="w-full max-w-[88%] flex flex-wrap gap-2">
-              {(["thc", "cbd", "balanced", "you_decide"] as const).map((r) => (
-                <button
-                  key={r}
-                  onClick={() => pickRatio(r)}
-                  className="rounded-full border border-border bg-noir-card px-4 py-2 text-sm capitalize text-ink-soft transition-colors hover:border-resin/40 hover:bg-resin/5 hover:text-resin-light"
-                >
-                  {r === "you_decide" ? "You decide" : r}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+          return (
+            <>
+              {/* Effect quick-picks */}
+              {showEffects && !busy && (
+                <div className="flex flex-wrap gap-2 pl-[44px] pr-4 pt-1 animate-fade-in-up">
+                  {EFFECTS.map((e) => (
+                    <button
+                      key={e.value}
+                      onClick={() => handleSend(e.label)}
+                      className="rounded-full border border-border bg-noir/50 backdrop-blur-md shadow-sm px-4 py-2 text-sm text-ink-soft transition-all hover:-translate-y-0.5 hover:border-resin/40 hover:bg-resin/10 hover:text-resin-light"
+                    >
+                      {e.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Tolerance quick-picks */}
+              {showTolerance && !busy && (
+                <div className="flex flex-wrap gap-2 pl-[44px] pr-4 pt-1 animate-fade-in-up">
+                  {TOLERANCES.map((t) => (
+                    <button
+                      key={t.value}
+                      onClick={() => handleSend(t.label)}
+                      className="rounded-full border border-border bg-noir/50 backdrop-blur-md shadow-sm px-4 py-2 text-sm text-ink-soft transition-all hover:-translate-y-0.5 hover:border-resin/40 hover:bg-resin/10 hover:text-resin-light"
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Ratio quick-picks */}
+              {showRatio && !busy && (
+                <div className="flex flex-wrap gap-2 pl-[44px] pr-4 pt-1 animate-fade-in-up">
+                  {(["More CBD", "Balanced", "More THC", "You decide"] as const).map((r) => (
+                    <button
+                      key={r}
+                      onClick={() => handleSend(r)}
+                      className="rounded-full border border-border bg-noir/50 backdrop-blur-md shadow-sm px-4 py-2 text-sm text-ink-soft transition-all hover:-translate-y-0.5 hover:border-resin/40 hover:bg-resin/10 hover:text-resin-light"
+                    >
+                      {r}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          );
+        })()}
 
         {busy && <ThinkingIndicator />}
-        {stage === "completed" && !busy && (
-          <div className="flex justify-center pt-2">
-            <Button variant="secondary" size="sm" onClick={reset}>
-              <RefreshCw className="h-4 w-4" /> Match me again
-            </Button>
-          </div>
-        )}
         <div className="h-32 shrink-0" />
       </div>
 
@@ -371,7 +461,7 @@ export default function AppChat({
                   }
                 }}
                 rows={1}
-                placeholder={stage === "verifying" ? "Name a brand…" : stage === "interview_effect" ? "Tell me the vibe…" : "Message…"}
+                placeholder="Message…"
                 className="max-h-36 flex-1 resize-none bg-transparent px-1 py-2.5 text-base leading-snug outline-none placeholder:text-ink-muted/60"
               />
               <button
@@ -386,6 +476,31 @@ export default function AppChat({
           </div>
         </div>
       </div>
+
+      <AddressDialog
+        open={addressModalOpen}
+        onOpenChange={setAddressModalOpen}
+        onSaved={() => {
+          if (pendingPayment) {
+            runPayment(pendingPayment.product, pendingPayment.brand, true);
+            setPendingPayment(null);
+          }
+        }}
+      />
+
+      <PravaPaymentModal
+        open={paymentModalOpen}
+        onOpenChange={(v) => {
+          setPaymentModalOpen(v);
+          if (!v) setActivePurchase(null);
+        }}
+        purchase={activePurchase ? {
+          product: { id: activePurchase.product.id, name: activePurchase.product.name, price_inr: activePurchase.product.price_inr },
+          brand: { name: activePurchase.brand.name, website: activePurchase.brand.website, prescription_required: activePurchase.brand.prescription_required },
+        } : null}
+        cardId={savedCardId}
+        onPaid={onPaid}
+      />
     </div>
   );
 }
@@ -447,8 +562,33 @@ function MessageBubble({
   }
 
   if (message.kind === "confirmation" && message.data) {
-    const { product, brand } = message.data as { product: CannabisProduct; brand: Brand };
-    return <ConfirmationCard product={product} brand={brand} />;
+    const { product, brand, txnRef, doctorRouted } = message.data as {
+      product: CannabisProduct;
+      brand: Brand;
+      txnRef?: string;
+      doctorRouted?: boolean;
+    };
+    return <ConfirmationCard product={product} brand={brand} txnRef={txnRef} doctorRouted={doctorRouted} />;
+  }
+
+  if (message.kind === "payment") {
+    const { step, detail } = (message.data as { step: string; detail?: string }) ?? { step: message.content };
+    return (
+      <div className="flex items-start gap-3 animate-fade-in-up">
+        <Avatar />
+        <div className="w-full max-w-[88%]">
+          <Card className="border-resin/20 bg-noir-card">
+            <CardContent className="flex items-center gap-3 py-4">
+              <Loader2 className="h-5 w-5 shrink-0 animate-spin text-resin" />
+              <div>
+                <p className="text-sm text-ink">{step}</p>
+                {detail && <p className="text-xs text-ink-muted">{detail}</p>}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -667,7 +807,17 @@ function BrandReport({
   );
 }
 
-function ConfirmationCard({ product, brand }: { product: CannabisProduct; brand: Brand }) {
+function ConfirmationCard({
+  product,
+  brand,
+  txnRef,
+  doctorRouted,
+}: {
+  product: CannabisProduct;
+  brand: Brand;
+  txnRef?: string;
+  doctorRouted?: boolean;
+}) {
   return (
     <div className="flex items-start gap-3 animate-fade-in-up">
       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-resin text-noir">
@@ -681,13 +831,19 @@ function ConfirmationCard({ product, brand }: { product: CannabisProduct; brand:
               <p className="font-display text-lg font-semibold">Order placed</p>
             </div>
             <p className="mt-2 text-sm text-ink-soft">
-              {product.name} from {brand.name}. {brand.prescription_required ? "Their doctor will call within 24h." : "Ships in 2-4 days."}
+              {product.name} from {brand.name}.{" "}
+              {doctorRouted || brand.prescription_required
+                ? "Their doctor will call within 24h."
+                : "Ships pan-India in 2-4 days."}
             </p>
             <div className="mt-4 grid grid-cols-3 gap-3 rounded-lg bg-noir-soft p-3 text-center">
               <div><p className="text-xs text-ink-muted">Total</p><p className="font-display font-semibold">{formatINR(product.price_inr)}</p></div>
               <div><p className="text-xs text-ink-muted">Pack</p><p className="font-display font-semibold">{product.pack_count}</p></div>
               <div><p className="text-xs text-ink-muted">Paid via</p><p className="font-display font-semibold">Prava</p></div>
             </div>
+            {txnRef && (
+              <p className="mt-3 text-xs text-ink-muted">Txn ref <span className="font-mono text-resin-light">{txnRef}</span></p>
+            )}
           </CardContent>
         </Card>
       </div>
