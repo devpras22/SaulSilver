@@ -22,27 +22,34 @@ export async function POST(req: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "not authenticated" }, { status: 401 });
 
-    const { brandName, productName, orderId, doctorRouting, brandWebsite } = (await req.json()) as {
+    const { brandName, productName, orderId, doctorRouting, brandWebsite, phone, hasFile } = (await req.json()) as {
       brandName: string;
       productName: string;
       orderId: string;
       doctorRouting?: string;
       brandWebsite?: string;
+      phone?: string;
+      hasFile?: boolean;
     };
 
-    // Try to fetch the brand's explicit support email (if we've researched it).
+    // Try to fetch the brand's explicit support email from the database
     let brandSupportEmail = "";
     const slug = brandName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
     const { data: brand } = await supabase
       .from("brands")
-      .select("website")
+      .select("website, support_email")
       .eq("id", slug)
       .maybeSingle();
 
-    const website = brandWebsite ?? brand?.website;
-    if (website) {
-      const domain = new URL(website).hostname.replace(/^www\./, "");
-      brandSupportEmail = `support@${domain}`;
+    if (brand?.support_email) {
+      brandSupportEmail = brand.support_email;
+    } else {
+      // Fallback to domain guessing if support_email is not yet filled out in Supabase
+      const website = brandWebsite ?? brand?.website;
+      if (website) {
+        const domain = new URL(website).hostname.replace(/^www\./, "");
+        brandSupportEmail = `support@${domain}`;
+      }
     }
 
     if (!brandSupportEmail) {
@@ -51,13 +58,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, reason: "no_support_email", simulated: true });
     }
 
+    let appendedDoctorRouting = doctorRouting || "";
+    if (phone) {
+      appendedDoctorRouting = `Please call the customer at ${phone} within 24 hours for a medical consultation.\n\n${appendedDoctorRouting}`;
+    }
+    if (hasFile) {
+      appendedDoctorRouting = `The customer has uploaded a valid medical prescription.\n\n${appendedDoctorRouting}`;
+    }
+
     const result = await sendPrescriptionRoutingEmail({
       brandName,
       brandSupportEmail,
       productName,
       orderId,
       customerEmail: user.email ?? "",
-      doctorRouting,
+      doctorRouting: appendedDoctorRouting,
     });
 
     return NextResponse.json({

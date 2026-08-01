@@ -190,6 +190,45 @@ export default function AppChat({
       { id: `user_${Date.now()}`, role: "user", content: userText, kind: "text", timestamp: new Date().toISOString() },
     ]);
 
+    // Handle prescription flow branches natively in chat
+    if (pendingPrescription) {
+      if (userText === "I need a consultation") {
+        pushAssistant("Got it. What's the best phone number for their doctor to reach you at?", "text");
+        return;
+      }
+      if (userText === "I have a prescription") {
+        pushAssistant("Perfect. Tap the paperclip below to upload a photo or PDF of it.", "text");
+        return;
+      }
+      
+      // If we are in pending prescription state and the last message asked for a phone number
+      const lastAssistantMsg = messages.filter(m => m.role === "assistant").pop()?.content || "";
+      if (lastAssistantMsg.includes("best phone number")) {
+        setBusy(true);
+        pushAssistant("Sending details to the medical team...", "thinking");
+        try {
+          await fetch("/api/prescription", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              brandName: pendingPrescription.brand.name,
+              productName: pendingPrescription.product.name,
+              orderId: pendingPrescription.sessionId,
+              doctorRouting: pendingPrescription.brand.doctor_routing,
+              phone: userText,
+            }),
+          });
+          const effect = pendingPrescription.product.effects?.[0] || "health";
+          const dynamicEffect = effect === "sleep" ? "insomnia" : effect === "pain" ? "pain" : effect === "anxiety" ? "anxiety" : "condition";
+          pushAssistant(`Sent. I let their medical team know you need this to help with the ${dynamicEffect}. They'll call you within 24 hours. Hang tight.`, "text");
+        } finally {
+          setBusy(false);
+          setPendingPrescription(null);
+        }
+        return;
+      }
+    }
+
     setBusy(true);
     pushAssistant("Thinking...", "thinking");
 
@@ -314,10 +353,10 @@ export default function AppChat({
   //     completion — our page never mounts the iframe.
   //   • Non-WebKit (Chrome/Firefox/Edge desktop, Chrome Android): the richer
   //     embedded modal (PravaCardForm iframe + in-page UX), which works fine.
-  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [activePurchase, setActivePurchase] = useState<{ product: CannabisProduct; brand: Brand } | null>(null);
-
-  // WebKit new-tab path state.
+  const [pendingPrescription, setPendingPrescription] = useState<{ product: CannabisProduct; brand: Brand; sessionId: string } | null>(null);
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [webkitPollingSession, setWebkitPollingSession] = useState<string | null>(null);
   const webkitPollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Reference to the checkout tab so we can close() it on completion.
@@ -515,33 +554,24 @@ export default function AppChat({
         }),
       });
 
-      // Prescription routing email (if required)
-      let doctorRouted = false;
+      // Prescription routing logic
       if (brand.prescription_required) {
-        try {
-          const rxRes = await fetch("/api/prescription", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              brandName: brand.name,
-              productName: product.name,
-              orderId: sessionId,
-              doctorRouting: brand.doctor_routing,
-            }),
-          });
-          if (rxRes.ok) doctorRouted = true;
-        } catch {
-          // non-fatal
-        }
+        setPendingPrescription({ product, brand, sessionId });
+        pushAssistant(
+          `Done. ${product.name} ordered and paid.`,
+          "confirmation",
+          { product, brand, txnRef: txnRefId, sessionId, doctorRouted: false }
+        );
+        setTimeout(() => {
+          pushAssistant("By law in India, a medical prescription is required before this can ship. Do you already have a prescription, or do you need a doctor's consultation?", "text");
+        }, 800);
+      } else {
+        pushAssistant(
+          `Done. ${product.name} ordered and paid. Ships pan-India in 2-4 days.`,
+          "confirmation",
+          { product, brand, txnRef: txnRefId, sessionId, doctorRouted: false }
+        );
       }
-
-      pushAssistant(
-        doctorRouted
-          ? `Done. ${product.name} ordered and paid. Their doctor will call you within 24h for the prescription.`
-          : `Done. ${product.name} ordered and paid. Ships pan-India in 2-4 days.`,
-        "confirmation",
-        { product, brand, txnRef: txnRefId, sessionId, doctorRouted }
-      );
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to save order";
       pushAssistant(`Payment succeeded but order save failed: ${msg}`, "text");
@@ -603,6 +633,21 @@ export default function AppChat({
                 </div>
               )}
 
+              {/* Prescription intent quick-picks */}
+              {pendingPrescription && !busy && lastText.includes("already have a prescription") && (
+                <div className="flex flex-wrap gap-2 pl-[44px] pr-4 pt-1 animate-fade-in-up">
+                  {(["I have a prescription", "I need a consultation"] as const).map((r) => (
+                    <button
+                      key={r}
+                      onClick={() => handleSend(r)}
+                      className="rounded-full border border-border bg-noir/80 shadow-sm px-4 py-2 text-sm text-ink-soft transition-all hover:-translate-y-0.5 hover:border-resin/40 hover:bg-resin/10 hover:text-resin-light"
+                    >
+                      {r}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {/* Ratio quick-picks */}
               {showRatio && !busy && (
                 <div className="flex flex-wrap gap-2 pl-[44px] pr-4 pt-1 animate-fade-in-up">
@@ -631,7 +676,9 @@ export default function AppChat({
           <div className="flex items-end gap-2">
             <div className="flex flex-1 items-end gap-1 rounded-2xl border border-border bg-noir-card px-1.5 py-1 transition-colors focus-within:border-resin">
               <label className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl text-ink-muted transition-colors hover:bg-noir-raised hover:text-resin">
-                <input type="file" accept="image/*" className="hidden" onChange={() => {}} />
+                <input type="file" accept="image/*,.pdf" className="hidden" onChange={(e) => {
+                  if (e.target.files?.[0]) handleUpload(e.target.files[0]);
+                }} />
                 <Upload className="h-5 w-5" />
               </label>
               <textarea
