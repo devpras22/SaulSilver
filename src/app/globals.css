@@ -1,0 +1,94 @@
+@import "tailwindcss";
+
+@theme {
+  /* Kusushi brand — named for 薬師, a traditional Japanese word for healer.
+     Warm, trustworthy, clinical but human. Japanese apothecary aesthetic. */
+
+  --color-cream: #faf7f2;
+  --color-cream-dark: #f3ede2;
+
+  --color-ink: #1a1815;
+  --color-ink-soft: #4a4540;
+  --color-ink-muted: #8a8278;
+
+  --color-matcha: #4a7c59;
+  --color-matcha-dark: #3a6147;
+  --color-matcha-light: #6b9d7a;
+
+  --color-vermillion: #d4502e;
+  --color-vermillion-dark: #b8401f;
+
+  --color-gold: #c9a961;
+
+  --color-bg: var(--color-cream);
+  --color-fg: var(--color-ink);
+  --color-border: #e8e0d1;
+
+  --font-sans: var(--font-inter), -apple-system, system-ui, sans-serif;
+  --font-display: var(--font-fraunces), Georgia, serif;
+
+  --radius: 0.5rem;
+}
+
+:root {
+  --background: #faf7f2;
+  --foreground: #1a1815;
+}
+
+* {
+  border-color: #e8e0d1;
+}
+
+html {
+  /* removed scroll-behavior: smooth because it causes buggy auto-scrolls on reload with hashes */
+}
+
+body {
+  background: var(--color-cream);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Subtle paper-grain texture for the apothecary feel */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image: radial-gradient(circle at 1px 1px, rgba(74, 124, 89, 0.04) 1px, transparent 0);
+  background-size: 24px 24px;
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d6cdb8; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #c0b69e; }
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes thinking-dot {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+.animate-fade-in-up { animation: fade-in-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.animate-fade-in { animation: fade-in 0.4s ease-out both; }
+.animate-thinking-dot { animation: thinking-dot 1.4s ease-in-out infinite; }
+
+.shimmer {
+  background: linear-gradient(90deg, #f0e9da 25%, #e8e0d1 50%, #f0e9da 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}

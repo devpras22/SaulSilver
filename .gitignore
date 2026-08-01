@@ -1,0 +1,38 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+
+# env / secrets — NEVER commit
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# next.js build output
+/.next/
+/out/
+
+# debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# misc
+.DS_Store
+*.pem
+.vscode/
+.idea/
+
+# Senso context seeds — generated dev artifacts, not source
+senso-context/
+fetch_pharmacies.js
+
+# agent scaffolding (not relevant to the project)
+AGENTS.md
+CLAUDE.md
+.zcode/
+.agents/
+.claude/
+.cursor/
