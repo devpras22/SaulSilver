@@ -137,6 +137,7 @@ create table if not exists public.brands (
   legal_status    text not null,            -- 'schedule_e1_prescription' | 'otc_cbd' | 'unregulated'
   prescription_required boolean not null default true,
   doctor_routing  text,                     -- how the in-house doctor flow works (free text)
+  licences        jsonb,                    -- [{type:"AYUSH",number:"25D/55/96"},...] structured claims
 
   -- Social proof (tie-breaker between near-identical gummies)
   instagram_handle text,                    -- '@trymoonimpact'
@@ -197,6 +198,12 @@ create table if not exists public.products (
   pack_count      integer not null,         -- 20
   price_inr       integer not null,         -- 3300
   in_stock        boolean not null default true,
+
+  -- The detail people actually read to compare brands
+  key_uses        text,                     -- 'chronic pain, disturbed sleep, CINV, muscle spasticity...'
+  warnings        text[],                   -- ['Not for pregnant/breastfeeding','Don't operate machinery',...]
+  composition     jsonb,                    -- {"Ashwagandha":"11%","Vijaya":"3%",...}
+  side_effects    text[],                   -- ['drowsiness','altered appetite','mild dizziness']
 
   -- Source of truth for the agent's research
   product_url     text,                     -- deep link to the SKU page

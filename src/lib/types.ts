@@ -169,6 +169,7 @@ export interface Brand {
   legal_status: "schedule_e1_prescription" | "otc_cbd" | "unregulated";
   prescription_required: boolean;
   doctor_routing?: string;
+  licences?: { type: string; number: string }[];
   instagram_handle?: string;
   instagram_followers?: number;
   instagram_engagement?: number;
@@ -198,6 +199,11 @@ export interface CannabisProduct {
   in_stock: boolean;
   product_url?: string;
   description?: string;
+  // The detail people read to compare brands
+  key_uses?: string;
+  warnings?: string[];
+  composition?: Record<string, string>;
+  side_effects?: string[];
 }
 
 /** A brand's research audit trail (row in `brand_research`). */
