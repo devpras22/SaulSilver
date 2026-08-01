@@ -320,6 +320,12 @@ export default function AppChat({
   // WebKit new-tab path state.
   const [webkitPollingSession, setWebkitPollingSession] = useState<string | null>(null);
   const webkitPollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Reference to the checkout tab so we can close() it on completion.
+  // No `noopener` on window.open so the handle stays usable.
+  const webkitCheckoutTabRef = useRef<Window | null>(null);
+  // The id of the inline "Opening secure checkout…" status bubble, so the
+  // poller can remove it (and its spinner) when payment completes.
+  const webkitPaymentMsgRef = useRef<string | null>(null);
 
   const runPayment = async (product: CannabisProduct, brand: Brand, skipAddressCheck = false) => {
     if (!savedAddress && !skipAddressCheck) {
@@ -340,7 +346,20 @@ export default function AppChat({
 
     // ── WebKit path: new tab, no iframe on our page ──
     if (isWebKitEngine()) {
-      pushAssistant(`Opening secure checkout for ${product.name}…`, "payment", { step: "Opening secure checkout…" });
+      // Single status bubble with a known id, so we can update + remove it.
+      const paymentMsgId = `pay_${Date.now().toString(36)}`;
+      webkitPaymentMsgRef.current = paymentMsgId;
+      setMessages((m) => [
+        ...m,
+        {
+          id: paymentMsgId,
+          role: "assistant",
+          content: "Opening secure checkout…",
+          kind: "payment",
+          data: { step: "Opening secure checkout…" },
+          timestamp: new Date().toISOString(),
+        },
+      ]);
       try {
         const res = await fetch("/api/pay", {
           method: "POST",
@@ -357,17 +376,30 @@ export default function AppChat({
         if (!res.ok) throw new Error(s.error || "Failed to create session");
 
         // Open the FULL Prava flow in a new tab. Our page hosts no iframe →
-        // the cross-window WebAuthn handshake can't crash us.
-        window.open(s.iframe_url, "_blank", "noopener,noreferrer");
+        // the cross-window WebAuthn handshake can't crash us. No `noopener`
+        // so we keep a handle to close the tab on completion.
+        webkitCheckoutTabRef.current = window.open(s.iframe_url, "_blank");
 
-        // Show an inline "complete it in the other window" status + poll.
-        pushAssistant(`Checkout opened in a new tab. Approve it there with your passkey — I'll wait here.`, "payment", {
-          step: "Waiting for passkey approval…",
-          detail: "Complete the payment in the tab that just opened.",
-        });
+        // Update the SAME status bubble to the "waiting" state — no new bubble.
+        setMessages((m) =>
+          m.map((msg) =>
+            msg.id === paymentMsgId
+              ? {
+                  ...msg,
+                  content: "Checkout opened in a new tab.",
+                  data: {
+                    step: "Waiting for passkey approval…",
+                    detail: "Approve it in the tab that just opened — I'll wait here.",
+                  },
+                }
+              : msg
+          )
+        );
         setWebkitPollingSession(s.session_id);
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Unknown error";
+        // Remove the status bubble, then show the error.
+        setMessages((m) => m.filter((msg) => msg.id !== paymentMsgId));
         pushAssistant(`Couldn't start checkout: ${msg}`, "text");
         setActivePurchase(null);
       }
@@ -395,6 +427,16 @@ export default function AppChat({
         const result: PaymentResultResponse = await res.json();
         if (result.status === "completed" || result.status === "failed" || result.status === "awaiting_result") {
           setWebkitPollingSession(null);
+
+          // Remove the "Opening secure checkout…" status bubble + spinner,
+          // and try to close the checkout tab (browsers may block this if the
+          // user interacted with the cross-origin tab — best-effort).
+          const msgId = webkitPaymentMsgRef.current;
+          if (msgId) setMessages((m) => m.filter((msg) => msg.id !== msgId));
+          webkitPaymentMsgRef.current = null;
+          try { webkitCheckoutTabRef.current?.close(); } catch { /* cross-origin */ }
+          webkitCheckoutTabRef.current = null;
+
           if (result.status === "failed") {
             pushAssistant(`Payment failed: ${result.transactions?.[0]?.error?.message || "unknown"}.`, "text");
             setActivePurchase(null);

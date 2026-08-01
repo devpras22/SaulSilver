@@ -42,6 +42,9 @@ export async function POST(req: NextRequest) {
       merchantCountryIso2: "IN",
       productDescription,
       cardId,
+      // On WebKit/Safari the checkout opens in a hosted tab; ask Prava to
+      // redirect it back to the app on completion. Points to the chat.
+      callbackUrl: `${origin}/app`,
     });
 
     return NextResponse.json({ ...session, mock: IS_MOCK });

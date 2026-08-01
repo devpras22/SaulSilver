@@ -67,6 +67,8 @@ export interface CreateSessionInput {
   productDescription: string;
   /** Reuse a saved card (skip card entry — Prava shows saved-cards list) */
   cardId?: string;
+  /** URL Prava redirects the hosted checkout tab to on completion (Safari path). */
+  callbackUrl?: string;
 }
 
 // ── Session creation (server-side) ───────────────────────────────────────────
@@ -80,6 +82,10 @@ export async function createSession(input: CreateSessionInput): Promise<SessionR
     total_amount: input.totalAmount,
     currency: input.currency,
     description: input.description || "Purchase",
+    // On the WebKit/Safari path the whole checkout happens in a hosted tab.
+    // callback_url asks Prava to redirect that tab back to the app on success,
+    // so the user lands on the chat instead of a dead "Payment successful" page.
+    ...(input.callbackUrl ? { callback_url: input.callbackUrl } : {}),
     // integration_type:"embedding" → undocumented but functional embedded skin.
     // Hides the redundant merchant-header/product-details/shipping sections
     // inside the iframe (we show them in our own UI). Without it, Prava renders
