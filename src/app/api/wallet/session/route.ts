@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createSession, IS_MOCK } from "@/lib/prava";
 
@@ -16,11 +16,13 @@ import { createSession, IS_MOCK } from "@/lib/prava";
  * verification ("transaction cancelled"). This is a card-enrollment charge that
  * completes the device-binding + passkey flow.
  */
-export async function POST() {
+export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "not authenticated" }, { status: 401 });
+
+    const origin = req.headers.get("origin") || "https://saul.pras.fun";
 
     const session = await createSession({
       userId: user.id,
@@ -29,7 +31,7 @@ export async function POST() {
       currency: "INR",
       description: "Wallet card enrollment",
       merchantName: "Saul Silver",
-      merchantUrl: "https://saul.pras.fun",
+      merchantUrl: origin,
       merchantCountryIso2: "IN",
       productDescription: "Card enrollment",
     });

@@ -29,6 +29,8 @@ export async function POST(req: NextRequest) {
 
     const productDescription = items.map((i) => `${i.name}${i.dosage ? ` ${i.dosage}` : ""}`).join(", ");
 
+    const origin = req.headers.get("origin") || "https://saul.pras.fun";
+
     const session = await createSession({
       userId: user.id,
       userEmail: user.email ?? "",
@@ -36,7 +38,7 @@ export async function POST(req: NextRequest) {
       currency: "INR",
       description: productDescription,
       merchantName,
-      merchantUrl: merchantUrl || "https://saul.pras.fun",
+      merchantUrl: origin,
       merchantCountryIso2: "IN",
       productDescription,
       cardId,
