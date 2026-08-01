@@ -55,6 +55,7 @@ export default function Home() {
             loop
             muted
             playsInline
+            poster="/media/resin-hero.jpg"
             className="h-full w-full object-cover"
           >
             <source src="/media/resin-hero.webm" type="video/webm" />

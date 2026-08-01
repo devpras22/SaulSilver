@@ -58,20 +58,45 @@ Before SaulSilver recommends a gummy, it uses Senso's intelligence to verify the
 
 1. **Clone & Install**
    ```bash
-   git clone https://github.com/devpras22/kusushi.git
+   git clone https://github.com/devpras22/SaulSilver.git
    cd SaulSilver
    npm install
    ```
 
 2. **Environment Variables**
-   Copy the `.env.example` to `.env.local` and fill in your keys:
+   Create a `.env.local` file and fill in all required keys:
    ```env
+   # OpenAI (Agent)
+   OPENAI_API_KEY=your_openai_key
+
+   # Prava (Payments)
+   NEXT_PUBLIC_BACKEND_URL=https://sandbox.api.prava.space
+   MERCHANT_SECRET_KEY=your_prava_secret_key
+   NEXT_PUBLIC_PUBLISHABLE_KEY=your_prava_publishable_key
+   PRAVA_SECRET_KEY=your_prava_secret_key
+   PRAVA_PUBLIC_KEY=your_prava_publishable_key
+   NEXT_PUBLIC_PRAVA_PUBLIC_KEY=your_prava_publishable_key
+
+   # Supabase (Auth, Persistence, Orders)
    NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
    NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
    SUPABASE_SERVICE_ROLE_KEY=your_service_role
-   OPENAI_API_KEY=your_openai_key
-   PRAVA_API_KEY=your_prava_key
+
+   # Google Maps (Location Verification)
+   GOOGLE_MAPS_API_KEY=your_google_maps_key
+
+   # Senso (Brand Trust & Discovery)
    SENSO_API_KEY=your_senso_key
+
+   # Linq (iMessage Infrastructure)
+   LINQ_API_KEY=your_linq_key
+   LINQ_FROM_NUMBER=your_linq_number
+   LINQ_BASE_URL=https://api.linqapp.com/api/partner/v3
+
+   # AgentMail (Agent Inbox)
+   AGENTMAIL_API_KEY=your_agentmail_key
+   AGENTMAIL_INBOX_ID=your_inbox_id
+   AGENTMAIL_FROM=your_agentmail_from
    ```
 
 3. **Run the Development Server**
