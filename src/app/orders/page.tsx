@@ -44,7 +44,7 @@ export default async function OrdersPage() {
 
   return (
     <div className="relative min-h-screen">
-      <header className="sticky top-0 z-40 border-b border-border bg-cream/85 backdrop-blur-md">
+      <header className="sticky top-0 z-40 border-b border-border bg-cream/95">
         <div className="mx-auto flex max-w-4xl items-center gap-3 px-4 py-3 sm:px-6">
           <Link href="/app" className="flex items-center gap-2 text-ink-muted transition-colors hover:text-ink">
             <ArrowLeft className="h-4 w-4" />

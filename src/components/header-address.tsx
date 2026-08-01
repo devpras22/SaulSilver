@@ -103,7 +103,7 @@ function AddressSelectorDialog({
     <>
       <Dialog.Root open={open} onOpenChange={onOpenChange}>
         <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-50 bg-ink/30 backdrop-blur-sm data-[state=open]:animate-fade-in" />
+          <Dialog.Overlay className="fixed inset-0 z-50 bg-ink/30 data-[state=open]:animate-fade-in" />
           <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[92%] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-cream p-6 shadow-xl data-[state=open]:animate-fade-in-up flex flex-col max-h-[85vh]">
             <div className="mb-4 flex items-center gap-2 shrink-0">
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-matcha/10">
@@ -147,7 +147,7 @@ function AddressSelectorDialog({
                       {loadingId === `delete-${addr.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                     </button>
                     {loadingId === addr.id && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-cream/50 rounded-xl backdrop-blur-sm">
+                      <div className="absolute inset-0 flex items-center justify-center bg-cream/50 rounded-xl">
                         <Loader2 className="h-5 w-5 animate-spin text-matcha" />
                       </div>
                     )}
@@ -291,7 +291,7 @@ export function AddressDialog({
       }}
     >
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-ink/30 backdrop-blur-sm data-[state=open]:animate-fade-in" />
+        <Dialog.Overlay className="fixed inset-0 z-50 bg-ink/30 data-[state=open]:animate-fade-in" />
         <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[92%] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-cream p-6 shadow-xl data-[state=open]:animate-fade-in-up">
           <div className="mb-4 flex items-center gap-2">
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-matcha/10">
