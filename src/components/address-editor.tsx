@@ -131,7 +131,7 @@ export function AddressEditor({ currentAddress }: { currentAddress: string | nul
                 }}
                 placeholder="Enter your address…"
                 disabled={stage === "verifying" || stage === "saving"}
-                className="flex-1 rounded-lg border border-border bg-white px-3 py-2.5 text-sm outline-none transition-colors placeholder:text-ink-muted/60 focus:border-matcha disabled:opacity-60"
+                className="flex-1 rounded-lg border border-border bg-noir-card px-3 py-2.5 text-sm outline-none transition-colors placeholder:text-ink-muted/60 focus:border-matcha disabled:opacity-60"
               />
               <button
                 onClick={verify}
@@ -154,7 +154,7 @@ export function AddressEditor({ currentAddress }: { currentAddress: string | nul
                   <CheckCircle2 className="h-3.5 w-3.5" />
                   Is this the right place?
                 </div>
-                <div className="mb-2 rounded-lg border border-border bg-white p-2.5 text-xs">
+                <div className="mb-2 rounded-lg border border-border bg-noir-card p-2.5 text-xs">
                   <p className="font-medium text-ink">{geo.formatted}</p>
                   <p className="mt-0.5 font-mono text-[11px] text-ink-muted">
                     {geo.lat.toFixed(4)}, {geo.lng.toFixed(4)}
@@ -185,7 +185,7 @@ export function AddressEditor({ currentAddress }: { currentAddress: string | nul
               <button
                 onClick={() => setOpen(false)}
                 disabled={stage === "saving"}
-                className="flex-1 rounded-lg border border-border bg-white py-2.5 text-sm font-medium text-ink-soft transition-colors hover:bg-cream-dark/40"
+                className="flex-1 rounded-lg border border-border bg-noir-card py-2.5 text-sm font-medium text-ink-soft transition-colors hover:bg-cream-dark/40"
               >
                 Cancel
               </button>

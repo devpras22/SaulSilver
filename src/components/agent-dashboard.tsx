@@ -93,7 +93,7 @@ export function AgentDashboard({
 
       {/* Location found */}
       {data.geo && (
-        <div className="flex items-center gap-2 rounded-lg border border-border bg-white/60 px-3 py-2 text-xs text-ink-soft">
+        <div className="flex items-center gap-2 rounded-lg border border-border bg-noir-card/60 px-3 py-2 text-xs text-ink-soft">
           <MapPin className="h-3.5 w-3.5 text-matcha" />
           <span className="font-medium">{data.geo.formatted}</span>
           {data.geo.mock && <Badge variant="outline" className="text-[10px]">mock geo</Badge>}

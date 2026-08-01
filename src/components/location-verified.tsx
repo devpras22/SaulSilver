@@ -67,7 +67,7 @@ export function LocationVerifiedCard({ geo }: { geo: GeoData }) {
 
             <button
               onClick={() => setShowMap((s) => !s)}
-              className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-white py-1.5 text-xs font-medium text-ink-soft transition-colors hover:bg-cream-dark/40"
+              className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-md border border-border bg-noir-card py-1.5 text-xs font-medium text-ink-soft transition-colors hover:bg-cream-dark/40"
             >
               <Navigation className="h-3 w-3 text-matcha" />
               {showMap ? "Hide map" : "Show map"}

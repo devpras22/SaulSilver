@@ -4,19 +4,21 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-matcha/40 disabled:pointer-events-none disabled:opacity-50 active:scale-[0.98]",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-resin/40 disabled:pointer-events-none disabled:opacity-50 active:scale-[0.98]",
   {
     variants: {
       variant: {
         primary:
-          "bg-matcha text-cream hover:bg-matcha-dark shadow-sm shadow-matcha/20",
+          "bg-resin text-noir hover:bg-resin-light shadow-sm shadow-resin/30",
         secondary:
-          "bg-cream-dark text-ink hover:bg-border border border-border",
-        ghost: "text-ink-soft hover:bg-cream-dark",
+          "bg-noir-raised text-ink hover:bg-border border border-border",
+        ghost: "text-ink-soft hover:bg-noir-raised",
         outline:
-          "border border-matcha text-matcha hover:bg-matcha hover:text-cream",
+          "border border-resin text-resin hover:bg-resin hover:text-noir",
+        leaf:
+          "bg-leaf text-noir hover:bg-leaf-light shadow-sm shadow-leaf/30",
         danger:
-          "bg-vermillion text-cream hover:bg-vermillion-dark shadow-sm",
+          "bg-ember text-ink hover:bg-ember-dark shadow-sm",
       },
       size: {
         sm: "h-9 px-3 text-xs",

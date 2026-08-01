@@ -1,28 +1,59 @@
 @import "tailwindcss";
 
 @theme {
-  /* Kusushi brand — named for 薬師, a traditional Japanese word for healer.
-     Warm, trustworthy, clinical but human. Japanese apothecary aesthetic. */
+  /* SaulSilver — the cannabis sommelier.
+     Dark, moody, premium. The opposite of stoner-bro.
+     A high-end dispensary at 11pm: matte black shelves, resin-amber light,
+     living green, a flash of ember. Blunt on voice, classy on surface. */
 
-  --color-cream: #faf7f2;
-  --color-cream-dark: #f3ede2;
+  /* Base surfaces — near-black with warmth, never pure grey */
+  --color-noir: #0b0b0e;
+  --color-noir-soft: #131318;
+  --color-noir-card: #181820;
+  --color-noir-raised: #1f1f29;
 
-  --color-ink: #1a1815;
-  --color-ink-soft: #4a4540;
-  --color-ink-muted: #8a8278;
+  /* Ink — text tones on dark, warm off-whites, never clinical */
+  --color-ink: #f4f1ea;
+  --color-ink-soft: #b8b3a8;
+  --color-ink-muted: #6f6a60;
 
-  --color-matcha: #4a7c59;
-  --color-matcha-dark: #3a6147;
-  --color-matcha-light: #6b9d7a;
+  /* Cannabis green — deep living leaf, not neon */
+  --color-leaf: #5a8c5a;
+  --color-leaf-dark: #3f663f;
+  --color-leaf-light: #7ba97b;
 
-  --color-vermillion: #d4502e;
-  --color-vermillion-dark: #b8401f;
+  /* Resin amber — the warm accent, fresh trichomes in low light */
+  --color-resin: #d4a24c;
+  --color-resin-dark: #b08536;
+  --color-resin-light: #e8c074;
 
-  --color-gold: #c9a961;
+  /* Ember — the flash, used sparingly for heat/danger */
+  --color-ember: #d4502e;
+  --color-ember-dark: #b8401f;
 
-  --color-bg: var(--color-cream);
+  /* Frost — cool tertiary, for CBD / trust / verified signals */
+  --color-frost: #6a8caf;
+
+  /* Haze — purple-leaning haze, tertiary whimsy */
+  --color-haze: #8a7caf;
+
+  /* Legacy aliases — Kusushi token names remapped to the new dark palette.
+     This lets inherited components (chat-client, orders, chats, login, etc.)
+     keep using bg-cream / text-matcha / bg-matcha / text-gold etc. while
+     rendering correctly on the dark SaulSilver surface. We migrate these
+     to the semantic names as we rewrite each surface. */
+  --color-cream: var(--color-noir-soft);
+  --color-cream-dark: var(--color-noir-raised);
+  --color-matcha: var(--color-leaf);
+  --color-matcha-dark: var(--color-leaf-dark);
+  --color-matcha-light: var(--color-leaf-light);
+  --color-vermillion: var(--color-ember);
+  --color-vermillion-dark: var(--color-ember-dark);
+  --color-gold: var(--color-resin);
+
+  --color-bg: var(--color-noir);
   --color-fg: var(--color-ink);
-  --color-border: #e8e0d1;
+  --color-border: #2a2a35;
 
   --font-sans: var(--font-inter), -apple-system, system-ui, sans-serif;
   --font-display: var(--font-fraunces), Georgia, serif;
@@ -31,40 +62,43 @@
 }
 
 :root {
-  --background: #faf7f2;
-  --foreground: #1a1815;
+  --background: #0b0b0e;
+  --foreground: #f4f1ea;
 }
 
 * {
-  border-color: #e8e0d1;
+  border-color: #2a2a35;
 }
 
 html {
-  /* removed scroll-behavior: smooth because it causes buggy auto-scrolls on reload with hashes */
+  background: var(--color-noir);
 }
 
 body {
-  background: var(--color-cream);
+  background: var(--color-noir);
   color: var(--color-ink);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Subtle paper-grain texture for the apothecary feel */
+/* Subtle resin-grain texture — like smoke drifting in a dim room */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   pointer-events: none;
   z-index: 0;
-  background-image: radial-gradient(circle at 1px 1px, rgba(74, 124, 89, 0.04) 1px, transparent 0);
-  background-size: 24px 24px;
+  background-image:
+    radial-gradient(circle at 15% 20%, rgba(212, 162, 76, 0.06) 0, transparent 35%),
+    radial-gradient(circle at 85% 70%, rgba(90, 140, 90, 0.05) 0, transparent 40%),
+    radial-gradient(circle at 1px 1px, rgba(244, 241, 234, 0.018) 1px, transparent 0);
+  background-size: 100% 100%, 100% 100%, 28px 28px;
 }
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #d6cdb8; border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: #c0b69e; }
+::-webkit-scrollbar-thumb { background: #2a2a35; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #3a3a48; }
 
 @keyframes fade-in-up {
   from { opacity: 0; transform: translateY(12px); }
@@ -82,13 +116,22 @@ body::before {
   0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
   40% { transform: scale(1); opacity: 1; }
 }
+@keyframes smoke {
+  0%, 100% { transform: translateY(0) translateX(0); opacity: 0.4; }
+  50% { transform: translateY(-8px) translateX(4px); opacity: 0.7; }
+}
 
 .animate-fade-in-up { animation: fade-in-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
 .animate-fade-in { animation: fade-in 0.4s ease-out both; }
 .animate-thinking-dot { animation: thinking-dot 1.4s ease-in-out infinite; }
+.animate-smoke { animation: smoke 6s ease-in-out infinite; }
 
 .shimmer {
-  background: linear-gradient(90deg, #f0e9da 25%, #e8e0d1 50%, #f0e9da 75%);
+  background: linear-gradient(90deg, #181820 25%, #1f1f29 50%, #181820 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
 }
+
+/* Glow utilities for resin/leaf accents on dark */
+.glow-resin { box-shadow: 0 0 40px -8px rgba(212, 162, 76, 0.35); }
+.glow-leaf { box-shadow: 0 0 40px -8px rgba(90, 140, 90, 0.3); }

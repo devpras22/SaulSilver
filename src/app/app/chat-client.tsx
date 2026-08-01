@@ -835,7 +835,7 @@ export default function AppChat({ savedAddress }: { savedAddress: string | null 
                   ]);
                   runExtraction(demoText);
                 }}
-                className="rounded-full border border-border bg-white px-3.5 py-1.5 text-xs text-ink-soft shadow-sm transition-colors hover:border-matcha/40 hover:bg-matcha/5 hover:text-matcha"
+                className="rounded-full border border-border bg-noir-card px-3.5 py-1.5 text-xs text-ink-soft shadow-sm transition-colors hover:border-matcha/40 hover:bg-matcha/5 hover:text-matcha"
               >
                 {demoText}
               </button>
@@ -871,7 +871,7 @@ export default function AppChat({ savedAddress }: { savedAddress: string | null 
           )}
           <div className="flex items-end gap-2">
             {/* Unified input: textarea + upload (inside) + send (inside) */}
-            <div className="flex flex-1 items-end gap-1 rounded-2xl border border-border bg-white px-1.5 py-1 transition-colors focus-within:border-matcha">
+            <div className="flex flex-1 items-end gap-1 rounded-2xl border border-border bg-noir-card px-1.5 py-1 transition-colors focus-within:border-matcha">
               <label className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl text-ink-muted transition-colors hover:bg-cream-dark hover:text-matcha">
                 <input type="file" accept="image/*" className="hidden" onChange={handleUpload} />
                 <Upload className="h-5 w-5" />
@@ -924,7 +924,7 @@ function ThinkingIndicator() {
   return (
     <div className="flex items-center gap-3 text-ink-muted">
       <Avatar />
-      <div className="flex gap-1 rounded-2xl rounded-tl-sm bg-white px-4 py-3">
+      <div className="flex gap-1 rounded-2xl rounded-tl-sm bg-noir-card px-4 py-3">
         <span className="h-2 w-2 animate-thinking-dot rounded-full bg-ink-muted" style={{ animationDelay: "0ms" }} />
         <span className="h-2 w-2 animate-thinking-dot rounded-full bg-ink-muted" style={{ animationDelay: "200ms" }} />
         <span className="h-2 w-2 animate-thinking-dot rounded-full bg-ink-muted" style={{ animationDelay: "400ms" }} />
@@ -966,7 +966,7 @@ function PriorityPicker({
               className={`rounded-full border px-4 py-2 text-sm font-medium transition-all ${
                 priority === p.value
                   ? "border-matcha bg-matcha text-cream"
-                  : "border-border bg-white text-ink-soft hover:border-matcha/40"
+                  : "border-border bg-noir-card text-ink-soft hover:border-matcha/40"
               }`}
             >
               {p.label}
@@ -1051,7 +1051,7 @@ function MessageBubble({
     return (
       <div className="flex items-start gap-3 animate-fade-in-up">
         <Avatar />
-        <div className="w-full max-w-[88%] rounded-2xl rounded-tl-sm border border-border bg-white p-4 shadow-sm">
+        <div className="w-full max-w-[88%] rounded-2xl rounded-tl-sm border border-border bg-noir-card p-4 shadow-sm">
           <p className="text-sm text-ink">
             I have <span className="font-medium">{savedAddress}</span> saved as your delivery address.
             Is <span className="font-medium">{mentionedAddress}</span> a one-time delivery, or should I update your saved address?
@@ -1059,7 +1059,7 @@ function MessageBubble({
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               onClick={() => onOneTimeAddress(mentionedAddress)}
-              className="rounded-lg border border-border bg-white px-3.5 py-2 text-xs font-medium text-ink-soft transition-colors hover:bg-cream-dark"
+              className="rounded-lg border border-border bg-noir-card px-3.5 py-2 text-xs font-medium text-ink-soft transition-colors hover:bg-cream-dark"
             >
               One-time delivery
             </button>
@@ -1108,7 +1108,7 @@ function MessageBubble({
   return (
     <div className="flex items-start gap-3 animate-fade-in-up">
       <Avatar />
-      <div className="max-w-[80%] whitespace-pre-line rounded-2xl rounded-tl-sm bg-white px-4 py-2.5 text-sm text-ink shadow-sm">
+      <div className="max-w-[80%] whitespace-pre-line rounded-2xl rounded-tl-sm bg-noir-card px-4 py-2.5 text-sm text-ink shadow-sm">
         {message.kind === "status" && <Shield className="mb-1 h-4 w-4 text-matcha" />}
         {message.content}
       </div>

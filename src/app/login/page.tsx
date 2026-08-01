@@ -107,7 +107,7 @@ function LoginInner() {
           </p>
         </div>
 
-        <div className="rounded-2xl border border-border bg-white p-6 shadow-sm">
+        <div className="rounded-2xl border border-border bg-noir-card p-6 shadow-sm">
           <div className="mb-4 flex items-center gap-2">
             <Shield className="h-4 w-4 text-matcha" />
             <h1 className="font-display text-lg font-semibold">Sign in</h1>
@@ -130,7 +130,7 @@ function LoginInner() {
                 placeholder="you@example.com"
                 required
                 disabled={status === "sending" || status === "sent"}
-                className="w-full rounded-lg border border-border bg-white py-2.5 pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-ink-muted/60 focus:border-matcha"
+                className="w-full rounded-lg border border-border bg-noir-card py-2.5 pl-9 pr-3 text-sm outline-none transition-colors placeholder:text-ink-muted/60 focus:border-matcha"
               />
             </div>
 

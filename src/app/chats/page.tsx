@@ -60,7 +60,7 @@ export default async function ChatsPage() {
         </div>
 
         {rows.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-border bg-white/50 p-12 text-center">
+          <div className="rounded-2xl border border-dashed border-border bg-noir-card/50 p-12 text-center">
             <MessageSquare className="mx-auto mb-3 h-8 w-8 text-ink-muted/50" />
             <p className="text-sm text-ink-soft">No saved chats yet.</p>
             <p className="mt-1 text-xs text-ink-muted">
@@ -75,7 +75,7 @@ export default async function ChatsPage() {
               return (
                 <div
                   key={c.id}
-                  className="group flex items-center gap-3 rounded-xl border border-border bg-white p-3 transition-colors hover:border-matcha/30"
+                  className="group flex items-center gap-3 rounded-xl border border-border bg-noir-card p-3 transition-colors hover:border-matcha/30"
                 >
                   <Link href={`/app?chat=${c.id}`} className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">

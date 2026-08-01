@@ -67,7 +67,7 @@ export default async function OrdersPage() {
             { label: "Avg ETA", value: `${avgEta}m` },
             { label: "Live txns", value: liveOrders.toString() },
           ].map((s) => (
-            <div key={s.label} className="rounded-xl border border-border bg-white p-3">
+            <div key={s.label} className="rounded-xl border border-border bg-noir-card p-3">
               <p className="text-xs text-ink-muted">{s.label}</p>
               <p className="font-display text-lg font-semibold">{s.value}</p>
             </div>
@@ -75,7 +75,7 @@ export default async function OrdersPage() {
         </div>
 
         {rows.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-border bg-white/50 p-12 text-center">
+          <div className="rounded-2xl border border-dashed border-border bg-noir-card/50 p-12 text-center">
             <Package className="mx-auto mb-3 h-8 w-8 text-ink-muted/50" />
             <p className="text-sm text-ink-soft">No orders yet.</p>
             <p className="mt-1 text-xs text-ink-muted">
@@ -91,7 +91,7 @@ export default async function OrdersPage() {
         ) : (
           <div className="space-y-3">
             {rows.map((o) => (
-              <div key={o.id} className="rounded-xl border border-border bg-white p-4">
+              <div key={o.id} className="rounded-xl border border-border bg-noir-card p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">

@@ -38,7 +38,7 @@ export function NewChatButton() {
       onClick={startNew}
       disabled={busy}
       title="Start a new chat"
-      className="flex items-center gap-1.5 rounded-full border border-border bg-white px-3 py-1 text-xs font-medium text-ink-soft transition-colors hover:border-matcha/40 hover:text-matcha"
+      className="flex items-center gap-1.5 rounded-full border border-border bg-noir-card px-3 py-1 text-xs font-medium text-ink-soft transition-colors hover:border-matcha/40 hover:text-matcha"
     >
       {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
       <span className="hidden sm:inline">New</span>

@@ -126,7 +126,7 @@ export function UserMenu({ email }: { email: string }) {
               <button
                 onClick={() => setConfirmOpen(false)}
                 disabled={busy}
-                className="flex-1 rounded-lg border border-border bg-white py-2.5 text-sm font-medium text-ink-soft transition-colors hover:bg-cream-dark/40"
+                className="flex-1 rounded-lg border border-border bg-noir-card py-2.5 text-sm font-medium text-ink-soft transition-colors hover:bg-cream-dark/40"
               >
                 Cancel
               </button>

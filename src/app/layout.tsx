@@ -6,21 +6,21 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "sw
 const fraunces = Fraunces({ subsets: ["latin"], variable: "--font-fraunces", display: "swap" });
 
 export const metadata: Metadata = {
-  title: "Kusushi — Your AI Pharmacy Agent",
+  title: "SaulSilver — The Cannabis Sommelier",
   description:
-    "Tell Kusushi what you need. It finds the medicine, prices it, and delivers — without the phone calls.",
-  keywords: ["AI pharmacy", "medicine delivery", "agentic commerce", "Prava hackathon", "health tech"],
+    "Too many brands. One opinionated guide. SaulSilver interviews you like a sommelier, verifies the pick is legit, then buys it.",
+  keywords: ["cannabis", "CBD gummies", "cannabis sommelier", "agentic commerce", "Prava hackathon", "India cannabis"],
   openGraph: {
-    title: "Kusushi — Your AI Pharmacy Agent",
-    description: "Tell Kusushi what you need. It finds the medicine, prices it, and delivers — without the phone calls.",
-    url: "https://kusushi.vercel.app",
-    siteName: "Kusushi",
+    title: "SaulSilver — The Cannabis Sommelier",
+    description: "Too many brands. One opinionated guide. SaulSilver interviews you, verifies the pick, then buys it.",
+    url: "https://saulsilver.vercel.app",
+    siteName: "SaulSilver",
     images: [
       {
         url: "/og-image.png",
         width: 1200,
         height: 630,
-        alt: "Kusushi AI Pharmacy Assistant",
+        alt: "SaulSilver — The Cannabis Sommelier",
       }
     ],
     locale: "en_IN",
@@ -28,8 +28,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Kusushi — Your AI Pharmacy Agent",
-    description: "Tell Kusushi what you need. It finds the medicine, prices it, and delivers — without the phone calls.",
+    title: "SaulSilver — The Cannabis Sommelier",
+    description: "Too many brands. One opinionated guide. SaulSilver interviews you, verifies the pick, then buys it.",
     images: ["/og-image.png"],
   },
 };
