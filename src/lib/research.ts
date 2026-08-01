@@ -235,6 +235,8 @@ trust_score: 0.9+ = clearly legit with lab tests; 0.6-0.9 = probably legit but g
 
   const products: CannabisProduct[] = (structureArgs.products ?? []).map(
     (p: Record<string, unknown>, i: number) => ({
+      // DB generates the real uuid on insert; this client-side id is just for
+      // the return payload. The insert omits `id` so gen_random_uuid() fires.
       id: `${slug}-p${i}`,
       brand_id: slug,
       name: p.name as string,

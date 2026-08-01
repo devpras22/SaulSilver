@@ -102,27 +102,29 @@ export async function POST(req: NextRequest) {
     // Replace products: delete old, insert new (cleaner than per-row upsert with FK)
     if (result.products.length > 0) {
       await supabase.from("products").delete().eq("brand_id", result.brand.id);
-      await supabase.from("products").insert(
+      const { error: prodError } = await supabase.from("products").insert(
         result.products.map((p) => ({
-          id: p.id,
           brand_id: p.brand_id,
           name: p.name,
-          variant: p.variant,
-          cannabinoids: p.cannabinoids,
-          ratio: p.ratio,
-          spectrum: p.spectrum,
+          variant: p.variant ?? null,
+          cannabinoids: p.cannabinoids ?? {},
+          ratio: p.ratio ?? null,
+          spectrum: p.spectrum ?? null,
           effect_tags: p.effect_tags,
           dose_level: p.dose_level,
-          onset_minutes: p.onset_minutes,
-          duration_hours: p.duration_hours,
-          flavor: p.flavor,
+          onset_minutes: p.onset_minutes ?? null,
+          duration_hours: p.duration_hours ?? null,
+          flavor: p.flavor ?? null,
           pack_count: p.pack_count,
           price_inr: p.price_inr,
           in_stock: p.in_stock,
-          product_url: p.product_url,
-          description: p.description,
+          product_url: p.product_url ?? null,
+          description: p.description ?? null,
         }))
       );
+      if (prodError) {
+        console.error("[/api/research] product insert failed:", prodError.message);
+      }
     }
 
     // Insert the research audit trail (always append — history matters)
@@ -154,41 +156,113 @@ export async function POST(req: NextRequest) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Gather raw research context about a brand via web search.
- * Uses a search endpoint and returns the top snippets for the agent to structure.
+ * Gather raw research context about a brand.
+ * Crawls the homepage + likely product/collection pages and extracts readable text.
+ * This is what the agent parses to extract cannabinoid mg, prices, pack counts.
  */
 async function gatherContext(brandName: string, website?: string): Promise<string[]> {
-  const queries = [
-    `${brandName} cannabis gummies India Vijaya CBD THC cannabinoid profile`,
-    `${brandName} gummies price India mg full spectrum effects`,
-    `"${brandName}" gummies review India legit prescription`,
+  const snippets: string[] = [];
+  if (!website) return snippets;
+
+  // Pages most likely to contain product detail (Shopify/WooCommerce/most D2C).
+  const candidates = [
+    website,
+    `${website.replace(/\/$/, "")}/collections/all`,
+    `${website.replace(/\/$/, "")}/collections/gummies`,
+    `${website.replace(/\/$/, "")}/products`,
+    `${website.replace(/\/$/, "")}/collections`,
+    `${website.replace(/\/$/, "")}/shop`,
   ];
 
-  const snippets: string[] = [];
+  // Fetch homepage + first 2 collection pages that resolve.
+  const fetched = await Promise.allSettled(
+    candidates.slice(0, 3).map((url) => fetchPage(url))
+  );
 
-  // If a website is known, fetch its homepage content directly.
-  if (website) {
-    try {
-      const res = await fetch(website, {
-        headers: { "User-Agent": "Mozilla/5.0 (compatible; SaulSilverBot/1.0)" },
-        signal: AbortSignal.timeout(8000),
-      });
-      if (res.ok) {
-        const html = await res.text();
-        // Crude text extraction — strip tags. Good enough for the agent to parse.
-        const text = html
-          .replace(/<script[\s\S]*?<\/script>/gi, "")
-          .replace(/<style[\s\S]*?<\/style>/gi, "")
-          .replace(/<[^>]+>/g, " ")
-          .replace(/\s+/g, " ")
-          .trim()
-          .slice(0, 3000);
-        if (text) snippets.push(`Website content: ${text}`);
+  let pagesFetched = 0;
+  for (let i = 0; i < fetched.length && pagesFetched < 3; i++) {
+    const r = fetched[i];
+    if (r.status === "fulfilled" && r.value) {
+      snippets.push(r.value);
+      pagesFetched++;
+    }
+  }
+
+  // If the homepage had product links, follow the first couple for real detail.
+  if (snippets.length > 0) {
+    const productLinks = extractProductLinks(snippets[0], website);
+    const detailPages = await Promise.allSettled(
+      productLinks.slice(0, 4).map((url) => fetchPage(url))
+    );
+    for (const r of detailPages) {
+      if (r.status === "fulfilled" && r.value) {
+        snippets.push(r.value);
       }
-    } catch {
-      // Network failures are fine — we still have search snippets.
     }
   }
 
   return snippets;
 }
+
+/** Fetch a URL, extract readable text + structured data for the agent. */
+async function fetchPage(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; SaulSilverBot/1.0)" },
+      signal: AbortSignal.timeout(8000),
+      redirect: "follow",
+    });
+    if (!res.ok) return null;
+    const html = await res.text();
+
+    // 1. Capture JSON-LD structured data BEFORE stripping scripts —
+    //    Shopify/WooCommerce put clean product schemas (price, name, desc) here.
+    const ldBlocks: string[] = [];
+    const ldRegex = /<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi;
+    let ldMatch: RegExpExecArray | null;
+    while ((ldMatch = ldRegex.exec(html)) !== null) {
+      const block = ldMatch[1].trim();
+      if (block.includes("Product") || block.includes("price") || block.includes("Offer")) {
+        ldBlocks.push(block.slice(0, 800));
+      }
+    }
+
+    // 2. Capture price patterns explicitly — they get mangled by tag stripping.
+    const priceMatches = html.match(/[₹$]\s?[0-9][0-9,]*\.?[0-9]{0,2}/g) ?? [];
+
+    // 3. Capture mg/dosage patterns — "175mg", "5mg THC", "100 mg CBD".
+    const mgMatches = html.match(/\b[0-9]{1,4}\s?mg\b(?:\s?(?:THC|CBD|CBN|CBG|Vijaya|cannabis))?/gi) ?? [];
+
+    // 4. Strip to readable text.
+    const text = html
+      .replace(/<script[\s\S]*?<\/script>/gi, "")
+      .replace(/<style[\s\S]*?<\/style>/gi, "")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 2000);
+
+    const parts: string[] = [url];
+    if (ldBlocks.length > 0) parts.push(`Structured product data:\n${ldBlocks.join("\n")}`);
+    if (priceMatches.length > 0) parts.push(`Prices found: ${[...new Set(priceMatches)].slice(0, 15).join(", ")}`);
+    if (mgMatches.length > 0) parts.push(`Dosage/mg found: ${[...new Set(mgMatches)].slice(0, 15).join(", ")}`);
+    parts.push(text);
+
+    return parts.join("\n\n");
+  } catch {
+    return null;
+  }
+}
+
+/** Extract likely product page links from a page's HTML. */
+function extractProductLinks(html: string, baseSite: string): string[] {
+  const links: string[] = [];
+  const productRegex = /href="(\/(?:products|product)\/[^"'?#]+)/gi;
+  let match: RegExpExecArray | null;
+  while ((match = productRegex.exec(html)) !== null && links.length < 5) {
+    const root = baseSite.replace(/\/$/, "");
+    links.push(`${root}${match[1]}`);
+  }
+  return [...new Set(links)];
+}
+

@@ -202,7 +202,7 @@ function buildReasons(
 
   // Ratio
   if (product.ratio) {
-    reasons.push(`${product.ratio} THC:CBD ratio`);
+    reasons.push(`${product.ratio} ratio`);
   }
 
   // Dose level
