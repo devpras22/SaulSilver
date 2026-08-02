@@ -42,7 +42,7 @@ export default function Pitch() {
         {/* ── The problem ── */}
         <Section kicker="the problem">
           <BigLine>Buying anything hard is exhausting.</BigLine>
-          <BigLine muted>Cannabis. A gaming chair. A camera. A jacket.</BigLine>
+          <BigLine muted>A gaming chair. Headphones. A camera. A jacket.</BigLine>
           <BigLine muted>Too many brands. Fake reviews. Sketchy sellers.</BigLine>
           <BigLine>You ask a friend who knows. Because they cut through it.</BigLine>
           <BigLine muted>But your friend has a job. And one specialty.</BigLine>
@@ -60,7 +60,7 @@ export default function Pitch() {
         {/* ── Saul is the proof ── */}
         <Section kicker="the proof">
           <BigLine>
-            Saul Silver is the cannabis one.
+            Saul Silver is the gummies one.
           </BigLine>
           <BigLine muted>Built for the Agentic Commerce Hackathon. Shipping today.</BigLine>
           <BigLine>He interviews you. Matches the right product.</BigLine>
@@ -76,13 +76,13 @@ export default function Pitch() {
             <LoopRow n="01" label="Give it a wallet" detail="Prava issues a one-time card scoped to the purchase. The agent can spend. You stay in control." />
             <LoopRow n="02" label="Give it a mailbox" detail="Order confirmations, tracking, returns land at the agent's inbox — not yours. It comes back to you." />
             <LoopRow n="03" label="Give it a browser" detail="A headless browser navigates the real merchant, fills the checkout, captures the decline or success." />
-            <LoopRow n="04" label="Give it expertise" detail="Deep category knowledge — cannabis today, fashion, tech, gaming tomorrow. The matching engine swaps." />
+            <LoopRow n="04" label="Give it expertise" detail="Deep category knowledge — gummies today, fashion, tech, gaming tomorrow. The matching engine swaps." />
           </div>
         </Section>
 
         {/* ── The company ── */}
         <Section kicker="the company">
-          <BigLine>We don't sell cannabis advice.</BigLine>
+          <BigLine>We don't sell gummy advice.</BigLine>
           <BigLine muted>We sell a way to spawn experts.</BigLine>
           <BigLine>
             Saul is vertical one.

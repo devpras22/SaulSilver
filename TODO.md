@@ -84,14 +84,38 @@ personality. But it's polish, not a winner on its own — ship the core flow fir
 The `checkout/automate` route is already merchant-agnostic (URL + card + email +
 address). To unlock "buy me an iPhone from apple.com":
 - Add a `buyFromUrl` agent tool alongside `matchProducts` / `researchBrand`.
-- Saul accepts any URL → creates a Prava session against that host → reuses the same
+- Saul accepts a URL → creates a Prava session against that host → reuses the same
   Stagehand checkout pipeline.
 
 Nice to have. Ship the cannabis flow first.
 
 ---
 
-## 3. Freshness check from chat — ✅ DONE (this session)
+## 4. Freshness check from chat — ✅ DONE (this session)
 Previously `forceRefresh` was never sent from chat, so "did X's new gummies launch?"
 always hit the 7-day cache. Fixed: the `researchBrand` tool now has a `forceRefresh`
 param the LLM sets when the user asks about restocks / new products / launches.
+
+---
+
+## 5. US / multi-region support (geo-detect + non-IN catalogs)
+
+**Status:** Deferred — sandbox-only for now; real build is post-submission. The
+3-min submission recording / Twitter is the place to TALK about this, not ship it.
+
+**Why it matters:** US eyeballs on the hackathon can't use the product — it's
+hardcoded to India. The vision ("spawn any category expert") implies this should
+work anywhere. Talking about the roadmap strengthens the Localhost startup pitch.
+
+**One-line summary of the gap:** the whole stack assumes India — no geo-detection,
+region hardcoded to "IN" at every layer, and the DB has 0 US brands. Live research
+*can* crawl a named US brand, but ambient "what's good near me in Boston" returns
+empty, and US dispensary checkouts (Dutchie/Jane) won't close via the Stagehand
+Shopify flow. Full scope, risks, and the minimum viable build live in
+**`docs/US-REGION-ROADMAP.md`**.
+
+---
+
+## Renumbering note
+Sections renumbered: the old "buy anything" was also #3, now #3 here; the
+freshness-done item is #4; US support is #5.

@@ -91,7 +91,7 @@ export default function Home() {
           </h1>
 
           <p className="mx-auto mt-8 max-w-xl animate-fade-in-up text-lg leading-relaxed text-ink-soft" style={{ animationDelay: "100ms" }}>
-            Thirteen brands. Hundreds of gummies. Zero idea what to pick.
+            Twelve brands. Hundreds of gummies. Zero idea what to pick.
             <br />
             Saul Silver interviews you.
             <br />
@@ -128,12 +128,12 @@ export default function Home() {
             <h2 className="mt-4 font-display text-4xl font-medium leading-tight text-ink sm:text-5xl">
               You have a friend for everything.
               <br />
-              <span className="italic text-resin">Saul is that friend. For sale.</span>
+              <span className="italic text-resin">Saul is that friend, for gummies.</span>
             </h2>
             <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-ink-soft">
               The gamer who knows which chair. The fashion kid who knows which jacket. The techie who knows which phone.
               <br />
-              Saul is the cannabis one. And the proof the pattern works.
+              Saul is the gummies one. And the proof the pattern works.
             </p>
           </div>
 
