@@ -144,6 +144,7 @@ export async function POST(req: NextRequest) {
       
       if (toolCall.type === "function" && toolCall.function.name === "matchProducts") {
         const args = JSON.parse(toolCall.function.arguments);
+        const limit = args.limit || 3;
         
         // EXECUTE MATCH LOCALLY
         const supabase = await createClient();
@@ -173,9 +174,9 @@ export async function POST(req: NextRequest) {
           "effect"
         );
         
-        const top3 = matches.slice(0, 3);
+        const topResults = matches.slice(0, limit);
         
-        if (top3.length === 0) {
+        if (topResults.length === 0) {
           await sendMessage({
             to: from,
             chatId,
@@ -186,16 +187,18 @@ export async function POST(req: NextRequest) {
         }
         
         // ── Feed results back to Saul so HE writes the recommendation text ──
-        const productSummary = top3.map((match, i) => {
+        const productSummary = topResults.map((match, i) => {
           const sensoReason = match.reasons.find((r: string) => r.startsWith("Senso: "));
           return `${i + 1}. ${match.brand.name} - ${match.product.name} — ₹${match.product.price_inr}${sensoReason ? ` (${sensoReason.replace("Senso: ", "")})` : ""}`;
         }).join("\n");
+        
+        const optionsText = topResults.length === 1 ? "1" : Array.from({ length: topResults.length }, (_, i) => i + 1).join(" or ");
         
         // Add the tool result to conversation so Saul can respond naturally
         state.messages.push({
           role: "tool",
           tool_call_id: toolCall.id,
-          content: `Found ${top3.length} matches:\n${productSummary}\n\nTell the user about these. End by saying they can reply 1, 2, or 3 to checkout with prava. Keep it casual.`,
+          content: `Found ${topResults.length} matches:\n${productSummary}\n\nTell the user about these. End by saying they can reply ${optionsText} to checkout with prava. Keep it casual.`,
         });
         
         // Get Saul's natural response
@@ -204,11 +207,11 @@ export async function POST(req: NextRequest) {
         state.messages.push(saulResponse);
         convos.set(from, state);
         
-        const saulText = saulResponse.content || `found ${top3.length} options for you. reply 1 2 or 3 to cop one`;
+        const saulText = saulResponse.content || `found ${topResults.length} options for you. reply ${optionsText} to cop one`;
         
         // Send images as photo dump
         const parts: MessagePart[] = [];
-        top3.forEach((match) => {
+        topResults.forEach((match) => {
           const imgPath = productImage(match.brand.id, match.product.name, match.product.image_url);
           const absoluteImgUrl = imgPath.startsWith("http") ? imgPath : `${origin}${imgPath}`;
           parts.push({ type: "media", url: absoluteImgUrl });
@@ -224,13 +227,14 @@ export async function POST(req: NextRequest) {
         });
         
         // Store recommendations for selection
-        state.pendingRecommendations = top3;
+        state.pendingRecommendations = topResults;
         convos.set(from, state);
         
         await stopTyping(chatId);
         return NextResponse.json({ ok: true });
       } else if (toolCall.type === "function" && toolCall.function.name === "researchBrand") {
         const args = JSON.parse(toolCall.function.arguments);
+        const limit = args.limit || 3;
         
         await sendMessage({
           to: from,
@@ -251,34 +255,64 @@ export async function POST(req: NextRequest) {
         const data = await res.json();
         
         let content = `Research result for ${args.brandName}:\nStatus: ${data.status}\n`;
+        let topResults: any[] = [];
+        
         if (data.products && data.products.length > 0) {
-          content += `Found ${data.products.length} products. Highlights: ${data.products.slice(0, 3).map((p: any) => p.name).join(", ")}.\n`;
+          topResults = data.products.slice(0, limit).map((p: any) => ({
+            brand: data.brand,
+            product: p,
+            reasons: ["Brand lookup"]
+          }));
+          
+          content += `Found ${data.products.length} products. Highlights:\n`;
+          topResults.forEach((match, i) => {
+            content += `${i + 1}. ${match.product.name} (₹${match.product.price_inr || 'TBD'}): ${match.product.description ? match.product.description.substring(0, 100) + '...' : match.product.type}\n`;
+          });
         } else {
           content += "No gummies/products found.\n";
         }
+        
         if (data.research?.summary) {
           content += `Summary: ${data.research.summary}\n`;
         }
         
+        const optionsText = topResults.length === 1 ? "1" : Array.from({ length: topResults.length }, (_, i) => i + 1).join(" or ");
+        const followUpInstruction = topResults.length > 0 
+          ? `\n\nTell the user what you found and give some details on the products. End by saying they can reply ${optionsText} to checkout with prava. Keep it casual.`
+          : "\n\nTell the user what you found in your own words. Keep it casual.";
+          
         state.messages.push({
           role: "tool",
           tool_call_id: toolCall.id,
-          content: content + "\n\nTell the user what you found in your own words. Keep it casual.",
+          content: content + followUpInstruction,
         });
         
         // Get Saul's natural response
         const followUp = await askSaul(state.messages);
         const saulResponse = followUp.choices[0].message;
         state.messages.push(saulResponse);
-        convos.set(from, state);
         
-        if (saulResponse.content) {
-          await sendMessage({
-            to: from,
-            chatId,
-            text: saulResponse.content,
+        if (topResults.length > 0) {
+          // Send images as photo dump
+          const parts: MessagePart[] = [];
+          topResults.forEach((match) => {
+            const imgPath = productImage(match.brand.id, match.product.name, match.product.image_url);
+            const absoluteImgUrl = imgPath.startsWith("http") ? imgPath : `${origin}${imgPath}`;
+            parts.push({ type: "media", url: absoluteImgUrl });
           });
+          
+          // Add Saul's text as the last part
+          parts.push({ type: "text", value: saulResponse.content || `found some options. reply ${optionsText} to cop one` });
+          
+          await sendMessage({ to: from, chatId, parts });
+          
+          // Store recommendations for selection
+          state.pendingRecommendations = topResults;
+        } else if (saulResponse.content) {
+          await sendMessage({ to: from, chatId, text: saulResponse.content });
         }
+        
+        convos.set(from, state);
         
         await stopTyping(chatId);
         return NextResponse.json({ ok: true });

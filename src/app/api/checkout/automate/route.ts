@@ -422,8 +422,8 @@ async function pauseForOtp(purchaseId: string, phone: string): Promise<string | 
     created_at: new Date().toISOString(),
   });
 
-  // Poll for up to 3 minutes.
-  const deadline = Date.now() + 3 * 60 * 1000;
+  // Poll for up to 5 minutes (SMS delivery can be slow).
+  const deadline = Date.now() + 5 * 60 * 1000;
   while (Date.now() < deadline) {
     await settle(2000);
     const { data } = await admin

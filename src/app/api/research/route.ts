@@ -29,15 +29,19 @@ export async function POST(req: NextRequest) {
     }
 
     const supabase = createServiceRoleClient();
-    const slug = slugify(brandName);
+    const providedSlug = slugify(brandName);
 
     // ── Check if already cached (don't re-research on every hit) ──
-    const { data: existing } = await supabase
+    // Fuzzy match: check exact slug, or ilike on name.
+    const { data: existingMatches } = await supabase
       .from("brands")
-      .select("id, name, last_researched")
-      .eq("id", slug)
-      .maybeSingle();
-
+      .select("id, name, last_researched, website")
+      .or(`id.eq.${providedSlug},name.ilike.%${brandName}%`)
+      .limit(1);
+      
+    const existing = existingMatches?.[0];
+    const slug = existing ? existing.id : providedSlug;
+    
     // Serve the cache unless the caller explicitly wants a live freshness check.
     if (!forceRefresh && existing?.last_researched) {
       const age = Date.now() - new Date(existing.last_researched).getTime();
@@ -75,13 +79,8 @@ export async function POST(req: NextRequest) {
     // the fallback for genuinely-new brands a judge might name.
     let resolvedWebsite = website;
     if (!resolvedWebsite) {
-      const { data: known } = await supabase
-        .from("brands")
-        .select("website")
-        .eq("id", slug)
-        .maybeSingle();
-      if (known?.website) {
-        resolvedWebsite = known.website;
+      if (existing?.website) {
+        resolvedWebsite = existing.website;
       } else {
         resolvedWebsite = await discoverWebsite(brandName);
       }

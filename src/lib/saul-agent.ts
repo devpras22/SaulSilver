@@ -41,6 +41,7 @@ export const saulTools = [
           effect: { type: "string", description: "Desired effect e.g. sleep, focus, calm, euphoria" },
           tolerance: { type: "string", description: "User's experience level e.g. beginner, moderate, heavy (optional)" },
           ratioPreference: { type: "string", description: "Preferred ratio e.g. lean_cbd, balanced, lean_thc, you_decide (optional)" },
+          limit: { type: "number", description: "How many recommendations to return. Default 3. Use 1 if they ask for 'the best' or a single recommendation." },
         },
         required: ["effect"],
       },
@@ -56,6 +57,7 @@ export const saulTools = [
         properties: {
           brandName: { type: "string", description: "Name of the brand" },
           forceRefresh: { type: "boolean", description: "true = bypass the 7-day cache and re-crawl the live site now (use when the user asks about new products, launches, or restocks). false/omit = serve the cached dossier for known brands." },
+          limit: { type: "number", description: "How many products to return. Default 3. Use 1 if they ask for just one or 'the best'." },
         },
         required: ["brandName"],
       },
