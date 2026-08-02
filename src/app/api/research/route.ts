@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { researchBrand, IS_MOCK_RESEARCH, slugify } from "@/lib/research";
+import { researchBrand, discoverWebsite, IS_MOCK_RESEARCH, slugify } from "@/lib/research";
 import { createServiceRoleClient } from "@/lib/supabase/server";
 import type { Brand, CannabisProduct, ResearchStatus } from "@/lib/types";
 
@@ -65,18 +65,40 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // ── STEP 0: Website discovery ──
+    // A brand name alone gives us nothing to scrape. If no URL was passed
+    // (the chat path: user just types "BOHECO"), resolve one via OpenAI first.
+    // TLDs are ambiguous (.ai vs .com can be different companies), so we use
+    // OpenAI rather than guessing .com. The discovered URL is returned to the
+    // client and shown as a hyperlink so the user can verify WHICH site ran.
+    let resolvedWebsite = website;
+    if (!resolvedWebsite) {
+      resolvedWebsite = await discoverWebsite(brandName);
+      if (!resolvedWebsite) {
+        return NextResponse.json({
+          status: "website_not_found" as ResearchStatus,
+          brand: { name: brandName, website: null },
+          products: [],
+          research: null,
+          mock: IS_MOCK_RESEARCH,
+          cached: false,
+        });
+      }
+    }
+
     // ── Gather raw context (now footer-aware for licence extraction) ──
-    const context = await gatherContext(brandName, website);
+    const context = await gatherContext(brandName, resolvedWebsite);
 
     // ── HARD GATE: no context scraped → do NOT call OpenAI ──
     // If the scrape returned nothing (site blocks the bot, wrong URL, offline),
     // OpenAI has NOTHING to ground on and will hallucinate a plausible cannabis
     // catalog from its training data (this happened with boheco.org — invented
     // "BOHECO Pain Relief Balm" etc. from zero context). Abort honestly instead.
+    // Surface the resolved URL so the card can hyperlink it.
     if (context.length === 0) {
       return NextResponse.json({
         status: "research_unavailable" as ResearchStatus,
-        brand: { name: brandName, website },
+        brand: { name: brandName, website: resolvedWebsite },
         products: [],
         research: null,
         reason: "site_unreachable",
@@ -86,7 +108,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Run the research agent ──
-    const result = await researchBrand({ brandName, context, knownWebsite: website });
+    const result = await researchBrand({ brandName, context, knownWebsite: resolvedWebsite });
 
     const isNewBrand = !existing;
     const isNoGummies = result.gummyProducts.length === 0;

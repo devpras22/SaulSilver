@@ -49,6 +49,64 @@ export function isMockResearch(): boolean {
 export const IS_MOCK_RESEARCH = !process.env.OPENAI_API_KEY;
 
 // ─────────────────────────────────────────────────────────────────────────────
+// WEBSITE DISCOVERY — resolve a brand name to its official URL
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Resolve a brand name to its official website URL. The FIRST step of research
+ * when no URL is passed — a name alone tells us nothing to scrape.
+ *
+ * Uses OpenAI (not a hard-coded .com/.in guess) because TLDs are ambiguous:
+ * the same name can resolve to a cannabis brand on .org (BOHECO) and an
+ * unrelated company on .com (apple.com). OpenAI picks the real official site
+ * from its knowledge. Returns null if it can't find a confident match.
+ *
+ * The returned URL is surfaced to the user as a hyperlink so they can verify
+ * WHICH site was checked — closing the "wrong company" loop.
+ */
+export async function discoverWebsite(brandName: string): Promise<string | null> {
+  const openai = getOpenAI();
+  if (!openai) {
+    // Mock fallback: try a naive .com guess so the flow is exercise-able offline.
+    const guess = `${brandName.toLowerCase().replace(/[^a-z0-9]/g, "")}.com`;
+    return `https://${guess}`;
+  }
+
+  try {
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `You resolve brand names to their official primary website URL. Return ONLY the full https URL (e.g. "https://example.com") of the brand's official site — no prose, no quotes, no explanation.
+
+Rules:
+- Pick the OFFICIAL site run by the brand itself, not a marketplace page (Amazon, ItsHemp, etc.).
+- If the name is ambiguous (two different companies share it), pick the one most likely to be a consumer brand.
+- If you genuinely do not know the brand's website, return the single word: unknown`,
+        },
+        {
+          role: "user",
+          content: `What is the official website URL of the brand "${brandName}"?`,
+        },
+      ],
+      temperature: 0,
+      max_tokens: 60,
+    });
+
+    const raw = completion.choices[0]?.message?.content?.trim() ?? "";
+    if (!raw || raw.toLowerCase() === "unknown") return null;
+    // Normalize: ensure it has a scheme, strip trailing slash + quotes.
+    const withScheme = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+    const cleaned = withScheme.replace(/^["']|["']$/g, "").replace(/\/+$/, "");
+    // Sanity: must look like a URL with a dot.
+    return /\./.test(cleaned) ? cleaned : null;
+  } catch {
+    return null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // STRUCTURE SCHEMAS — what we ask OpenAI to return
 // ─────────────────────────────────────────────────────────────────────────────
 

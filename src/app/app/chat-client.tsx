@@ -21,6 +21,7 @@ import {
   ChevronDown,
   ChevronUp,
   Zap,
+  Search,
 } from "lucide-react";
 import type {
   Brand,
@@ -391,15 +392,35 @@ export default function AppChat({
         status === "new_brand_no_gummies" ||
         status === "existing_brand_unchanged" ||
         status === "research_unavailable" ||
-        status === "not_a_cannabis_brand"
+        status === "not_a_cannabis_brand" ||
+        status === "website_not_found"
       ) {
         // Honest-decline / freshness / couldn't-reach / not-cannabis cards.
-        // Each renders distinct Saul-voice copy via ResearchStatusCard.
+        // Fetch Saul's in-character one-liner for the situation; the card renders
+        // it as the headline. Non-blocking — empty quip falls back to structure.
+        let quip = "";
+        try {
+          const detail =
+            data.research?.findings?.non_gummy_summary ??
+            (data.research?.findings?.other_products?.length
+              ? `${data.research.findings.other_products.map((p: { name: string }) => p.name).join(", ")}`
+              : undefined);
+          const reactRes = await fetch("/api/chat/reaction", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status, brandName: data.brand?.name ?? brandName, website: data.brand?.website, detail }),
+          });
+          const reactData = await reactRes.json();
+          quip = reactData.quip ?? "";
+        } catch {
+          // quip stays "" — card renders without a headline.
+        }
         pushAssistant("", "research_status", {
           status,
           brand: data.brand,
           research: data.research,
           delta: data.delta,
+          quip,
         });
       } else {
         // added / refreshed / cached → the full brand report. Pass delta so the
@@ -960,12 +981,13 @@ function MessageBubble({
   }
 
   if (message.kind === "research_status" && message.data) {
-    const { status, brand, research } = message.data as {
+    const { status, brand, research, quip } = message.data as {
       status:
         | "new_brand_no_gummies"
         | "existing_brand_unchanged"
         | "research_unavailable"
-        | "not_a_cannabis_brand";
+        | "not_a_cannabis_brand"
+        | "website_not_found";
       brand: Brand;
       research: {
         verdict: string;
@@ -976,8 +998,9 @@ function MessageBubble({
           coming_soon_gummies?: { name: string }[];
         };
       } | null;
+      quip?: string;
     };
-    return <ResearchStatusCard status={status} brand={brand} research={research} onPickEffect={(effect) => onMatch(effect)} />;
+    return <ResearchStatusCard status={status} brand={brand} research={research} quip={quip} onPickEffect={(effect) => onMatch(effect)} />;
   }
 
   if (message.kind === "dashboard" && message.data) {
@@ -1544,6 +1567,23 @@ function BrandReport({
   );
 }
 
+/** The glassmorphic effect chips reused across every ResearchStatusCard CTA. */
+function EffectChips({ onPick }: { onPick: (effect: Effect) => void }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {EFFECTS.map((e) => (
+        <button
+          key={e.value}
+          onClick={() => onPick(e.value)}
+          className="inline-flex items-center rounded-full border border-white/10 bg-noir/80 px-3.5 py-1.5 text-xs text-ink-soft shadow-sm backdrop-blur-md transition-all hover:-translate-y-0.5 hover:border-resin/40 hover:bg-resin/10 hover:text-resin-light"
+        >
+          {e.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /**
  * ResearchStatusCard — renders the two "honest non-match" outcomes:
  *  - new_brand_no_gummies: legit brand, but they sell oils/topicals only. Shows
@@ -1558,13 +1598,15 @@ function ResearchStatusCard({
   status,
   brand,
   research,
+  quip,
   onPickEffect,
 }: {
   status:
     | "new_brand_no_gummies"
     | "existing_brand_unchanged"
     | "research_unavailable"
-    | "not_a_cannabis_brand";
+    | "not_a_cannabis_brand"
+    | "website_not_found";
   brand: Brand;
   research: {
     verdict: string;
@@ -1575,12 +1617,47 @@ function ResearchStatusCard({
       coming_soon_gummies?: { name: string }[];
     };
   } | null;
+  /** Saul's in-character one-liner for this outcome (LLM-written). */
+  quip?: string;
   /** Pick an effect → match engine runs directly. No LLM, no mis-routing. */
   onPickEffect: (effect: Effect) => void;
 }) {
-  // ── The two "couldn't honestly research" cases get their own friendly cards.
+  // ── The "couldn't honestly research" cases each get a friendly card.
   // No verdict badge, no fabricated data — just Saul talking like a person.
+
+  // Couldn't find a website at all (discovery failed — name too generic/unknown).
+  if (status === "website_not_found") {
+    return (
+      <div className="flex items-start gap-3 animate-fade-in-up">
+        <Avatar />
+        <div className="w-full max-w-[88%]">
+          <Card className="bg-noir-card">
+            <CardContent className="pt-4 space-y-3">
+              <div className="flex items-start gap-2 rounded-lg border border-gold/20 bg-gold/5 p-3">
+                <Search className="mt-0.5 h-4 w-4 shrink-0 text-gold" />
+                <div>
+                  <p className="text-sm font-medium text-gold">
+                    {quip || `Couldn't pin down ${brand.name}'s website.`}
+                  </p>
+                  <p className="text-xs text-ink-muted mt-1 leading-relaxed">
+                    I had no luck tracking down their official shop — the name&apos;s either too generic
+                    or I just don&apos;t have it. If you&apos;ve got a direct link, drop it here and I&apos;ll dig
+                    in properly. Otherwise, here are some real gummies worth your time.
+                  </p>
+                </div>
+              </div>
+              <p className="text-xs font-medium text-ink-soft">Find a gummy — what are you after?</p>
+              <EffectChips onPick={onPickEffect} />
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
   if (status === "research_unavailable") {
+    const site = brand.website;
+    const host = site ? site.replace(/^https?:\/\//, "").replace(/\/$/, "") : null;
     return (
       <div className="flex items-start gap-3 animate-fade-in-up">
         <Avatar />
@@ -1591,28 +1668,30 @@ function ResearchStatusCard({
                 <Clock className="mt-0.5 h-4 w-4 shrink-0 text-gold" />
                 <div>
                   <p className="text-sm font-medium text-gold">
-                    Couldn&apos;t get through to {brand.name}&apos;s site.
+                    {quip || `Couldn't get through to ${brand.name}'s site.`}
                   </p>
                   <p className="text-xs text-ink-muted mt-1 leading-relaxed">
-                    I tried pulling up their shop, but their pages didn&apos;t open for me — happens
-                    sometimes with sites that block automated reads. Doesn&apos;t mean anything about the
-                    brand itself. Try one of the names below and I&apos;ll have a real answer in seconds,
-                    or hand me a direct product link and I&apos;ll work with that.
+                    I tried pulling up{" "}
+                    {host ? (
+                      <a
+                        href={site}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="underline underline-offset-2 hover:text-resin-light"
+                      >
+                        {host}
+                      </a>
+                    ) : (
+                      "their shop"
+                    )}{" "}
+                    but the pages didn&apos;t open for me — happens sometimes with sites that block
+                    automated reads. Doesn&apos;t mean anything about the brand itself. If that&apos;s the
+                    wrong site, hand me a direct product link and I&apos;ll work with that.
                   </p>
                 </div>
               </div>
               <p className="text-xs font-medium text-ink-soft">Find a gummy instead — what are you after?</p>
-              <div className="flex flex-wrap gap-2">
-                {EFFECTS.map((e) => (
-                  <button
-                    key={e.value}
-                    onClick={() => onPickEffect(e.value)}
-                    className="inline-flex items-center rounded-full border border-white/10 bg-noir/80 px-3.5 py-1.5 text-xs text-ink-soft shadow-sm backdrop-blur-md transition-all hover:-translate-y-0.5 hover:border-resin/40 hover:bg-resin/10 hover:text-resin-light"
-                  >
-                    {e.label}
-                  </button>
-                ))}
-              </div>
+              <EffectChips onPick={onPickEffect} />
             </CardContent>
           </Card>
         </div>
@@ -1631,28 +1710,30 @@ function ResearchStatusCard({
                 <Beaker className="mt-0.5 h-4 w-4 shrink-0 text-frost" />
                 <div>
                   <p className="text-sm font-medium text-frost">
-                    {brand.name} doesn&apos;t look like a cannabis brand.
+                    {quip || `${brand.name} doesn't look like a cannabis brand.`}
                   </p>
                   <p className="text-xs text-ink-muted mt-1 leading-relaxed">
-                    I read through their site and couldn&apos;t find any cannabinoid products — no
-                    Vijaya, no CBD oils, no edibles. Probably a different kind of company. If I&apos;ve
-                    got the wrong site, drop me the right link. Otherwise, here are some real gummies
-                    to check out.
+                    I read through{" "}
+                    {brand.website ? (
+                      <a
+                        href={brand.website}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="underline underline-offset-2 hover:text-resin-light"
+                      >
+                        {brand.website.replace(/^https?:\/\//, "").replace(/\/$/, "")}
+                      </a>
+                    ) : (
+                      "their site"
+                    )}{" "}
+                    and couldn&apos;t find any cannabinoid products — no Vijaya, no CBD oils, no
+                    edibles. Probably a different kind of company. If that&apos;s the wrong site, drop
+                    me the right link. Otherwise, here are some real gummies to check out.
                   </p>
                 </div>
               </div>
               <p className="text-xs font-medium text-ink-soft">Find a gummy — what are you after?</p>
-              <div className="flex flex-wrap gap-2">
-                {EFFECTS.map((e) => (
-                  <button
-                    key={e.value}
-                    onClick={() => onPickEffect(e.value)}
-                    className="inline-flex items-center rounded-full border border-white/10 bg-noir/80 px-3.5 py-1.5 text-xs text-ink-soft shadow-sm backdrop-blur-md transition-all hover:-translate-y-0.5 hover:border-resin/40 hover:bg-resin/10 hover:text-resin-light"
-                  >
-                    {e.label}
-                  </button>
-                ))}
-              </div>
+              <EffectChips onPick={onPickEffect} />
             </CardContent>
           </Card>
         </div>
@@ -1685,7 +1766,7 @@ function ResearchStatusCard({
                 <div className="flex items-start gap-2 rounded-lg border border-ember/20 bg-ember/5 p-3">
                   <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-ember" />
                   <div>
-                    <p className="text-sm font-medium text-ember">They don&apos;t sell gummies.</p>
+                    <p className="text-sm font-medium text-ember">{quip || "They don't sell gummies."}</p>
                     <p className="text-xs text-ink-muted mt-0.5">
                       {research!.findings.non_gummy_summary
                         ?? "Their catalog is oils, topicals, or capsules — not edibles."}
@@ -1722,17 +1803,7 @@ function ResearchStatusCard({
                   <p className="mb-2 text-xs font-medium text-ink-soft">
                     Find a gummy instead — what are you after?
                   </p>
-                  <div className="flex flex-wrap gap-2">
-                    {EFFECTS.map((e) => (
-                      <button
-                        key={e.value}
-                        onClick={() => onPickEffect(e.value)}
-                        className="inline-flex items-center rounded-full border border-white/10 bg-noir/80 px-3.5 py-1.5 text-xs text-ink-soft shadow-sm backdrop-blur-md transition-all hover:-translate-y-0.5 hover:border-resin/40 hover:bg-resin/10 hover:text-resin-light"
-                      >
-                        {e.label}
-                      </button>
-                    ))}
-                  </div>
+                  <EffectChips onPick={onPickEffect} />
                 </div>
               </>
             ) : (
@@ -1741,7 +1812,7 @@ function ResearchStatusCard({
                 <div className="flex items-start gap-2 rounded-lg border border-leaf/20 bg-leaf/5 p-3">
                   <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-leaf-light" />
                   <div>
-                    <p className="text-sm font-medium text-leaf-light">Catalog&apos;s current.</p>
+                    <p className="text-sm font-medium text-leaf-light">{quip || "Catalog's current."}</p>
                     <p className="text-xs text-ink-muted mt-0.5">
                       Just re-checked {brand.name}&apos;s site{researchedDate ? ` · ${researchedDate}` : ""}. No new gummies since the last refresh.
                     </p>
