@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import * as Dialog from "@radix-ui/react-dialog";
-import { MapPin, Loader2, CheckCircle2, Search, ChevronDown, Trash2, Plus, Home, Briefcase, Map } from "lucide-react";
+import { MapPin, Loader2, CheckCircle2, Search, ChevronDown, Trash2, Plus, Home, Briefcase, Map, Pencil } from "lucide-react";
 import type { GeoData } from "@/components/location-verified";
 
 type Stage = "idle" | "verifying" | "verified" | "saving" | "error";
@@ -64,6 +64,8 @@ function AddressSelectorDialog({
 }) {
   const router = useRouter();
   const [loadingId, setLoadingId] = useState<string | null>(null);
+
+  const [editAddress, setEditAddress] = useState<AddressEntry | null>(null);
 
   const setActive = async (id: string) => {
     if (id === activeAddressId) {
@@ -133,19 +135,27 @@ function AddressSelectorDialog({
                     <div className="mt-0.5 text-matcha">
                       {addr.label.toLowerCase().includes("home") ? <Home className="h-4 w-4" /> : addr.label.toLowerCase().includes("work") ? <Briefcase className="h-4 w-4" /> : <Map className="h-4 w-4" />}
                     </div>
-                    <div className="flex-1 pr-8">
+                    <div className="flex-1 pr-16">
                       <p className="text-sm font-semibold text-ink flex items-center gap-2">
                         {addr.label}
                         {isActive && <span className="text-[10px] uppercase tracking-wider text-matcha font-bold">Active</span>}
                       </p>
                       <p className="mt-0.5 text-xs text-ink-muted line-clamp-2">{addr.address}</p>
                     </div>
-                    <button 
-                      onClick={(e) => removeAddress(addr.id, e)}
-                      className="absolute right-3 top-3 p-1.5 text-ink-muted/50 hover:bg-vermillion/10 hover:text-vermillion rounded-md transition-colors"
-                    >
-                      {loadingId === `delete-${addr.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                    </button>
+                    <div className="absolute right-3 top-3 flex items-center gap-1">
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); setEditAddress(addr); }}
+                        className="p-1.5 text-ink-muted/50 hover:bg-ink/5 hover:text-ink rounded-md transition-colors"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button 
+                        onClick={(e) => removeAddress(addr.id, e)}
+                        className="p-1.5 text-ink-muted/50 hover:bg-vermillion/10 hover:text-vermillion rounded-md transition-colors"
+                      >
+                        {loadingId === `delete-${addr.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                      </button>
+                    </div>
                     {loadingId === addr.id && (
                       <div className="absolute inset-0 flex items-center justify-center bg-cream/50 rounded-xl">
                         <Loader2 className="h-5 w-5 animate-spin text-matcha" />
@@ -177,6 +187,14 @@ function AddressSelectorDialog({
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
+
+      {editAddress && (
+        <AddressEditDialog 
+          open={!!editAddress} 
+          onOpenChange={(o) => { if (!o) setEditAddress(null); }} 
+          addressEntry={editAddress} 
+        />
+      )}
     </>
   );
 }
@@ -244,13 +262,10 @@ export function AddressDialog({
 
   const confirm = async () => {
     if (!geo) return;
-    if (!apartment.trim()) {
-      setError("Please enter your Flat, House no., or Building name.");
-      return;
-    }
     setSaving(true);
     try {
-      const parts = [apartment.trim()];
+      const parts = [];
+      if (apartment.trim()) parts.push(apartment.trim());
       if (landmark.trim()) parts.push(landmark.trim());
       parts.push(geo.formatted);
       const fullAddress = parts.join(", ");
@@ -354,7 +369,7 @@ export function AddressDialog({
 
               <div className="mb-4 space-y-3">
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-ink-soft">Flat, House no., Building, Apartment *</label>
+                  <label className="mb-1 block text-xs font-medium text-ink-soft">Flat, House no., Building, Apartment (Optional)</label>
                   <input
                     type="text"
                     value={apartment}
@@ -451,6 +466,108 @@ export function AddressDialog({
                 Confirm &amp; save
               </button>
             )}
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
+export function AddressEditDialog({
+  open,
+  onOpenChange,
+  addressEntry,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  addressEntry: AddressEntry;
+}) {
+  const router = useRouter();
+  const [address, setAddress] = useState(addressEntry.address);
+  const [label, setLabel] = useState(addressEntry.label);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setAddress(addressEntry.address);
+      setLabel(addressEntry.label);
+      setError("");
+      setSaving(false);
+    }
+  }, [open, addressEntry]);
+
+  const confirm = async () => {
+    if (!address.trim() || !label.trim()) {
+      setError("Please fill out both fields.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch("/api/profile/address", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "edit", id: addressEntry.id, address: address.trim(), label: label.trim() }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      onOpenChange(false);
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't save");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="fixed inset-0 z-[60] bg-ink/30 data-[state=open]:animate-fade-in" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-[60] w-[92%] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-cream p-6 shadow-xl data-[state=open]:animate-fade-in-up">
+          <div className="mb-4 flex items-center gap-2">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-matcha/10">
+              <Pencil className="h-4 w-4 text-matcha" />
+            </div>
+            <div>
+              <Dialog.Title className="font-display text-lg font-semibold">
+                Edit address
+              </Dialog.Title>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-ink-soft">Label</label>
+              <input
+                type="text"
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                disabled={saving}
+                className="w-full rounded-lg border border-border bg-noir-card px-3 py-2 text-sm outline-none transition-colors focus:border-matcha disabled:opacity-60"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-ink-soft">Full Address</label>
+              <textarea
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                disabled={saving}
+                rows={3}
+                className="w-full rounded-lg border border-border bg-noir-card px-3 py-2 text-sm outline-none transition-colors focus:border-matcha disabled:opacity-60 resize-none"
+              />
+            </div>
+
+            {error && <p className="text-sm font-medium text-vermillion">{error}</p>}
+            
+            <button
+              onClick={confirm}
+              disabled={saving}
+              className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-matcha py-3 text-sm font-semibold text-cream transition-colors hover:bg-matcha-dark disabled:opacity-60"
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              Save changes
+            </button>
           </div>
         </Dialog.Content>
       </Dialog.Portal>

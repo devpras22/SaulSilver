@@ -42,7 +42,7 @@ export async function geocode(address: string): Promise<{ lat: number; lng: numb
   }
   const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(
     address
-  )}&key=${API_KEY}&components=country:IN`;
+  )}&key=${API_KEY}`;
   const res = await fetch(url);
   const data = await res.json();
   const loc = data.results?.[0]?.geometry?.location;
@@ -205,5 +205,5 @@ export function buildAutocompleteUrl(input: string): string | null {
   if (IS_MOCK_MAPS) return null;
   return `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(
     input
-  )}&components=country:IN&types=address&key=${API_KEY}`;
+  )}&types=address&key=${API_KEY}`;
 }

@@ -35,6 +35,10 @@ export async function POST(req: NextRequest) {
       if (addresses.some(a => a.id === id)) {
         active_address_id = id;
       }
+    } else if (action === "edit") {
+      const { id, address, label } = body;
+      if (!id || !address?.trim() || !label?.trim()) return NextResponse.json({ error: "id, address, and label required" }, { status: 400 });
+      addresses = addresses.map(a => a.id === id ? { ...a, label: label.trim(), address: address.trim() } : a);
     } else if (action === "delete") {
       const { id } = body;
       if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
