@@ -16,7 +16,7 @@
 
 import OpenAI from "openai";
 import type { Brand, BrandResearch, CannabisProduct } from "./types";
-import { getBrandTrustScore, ingestBrand, isSensoConfigured } from "./senso";
+import { ingestBrand, isSensoConfigured } from "./senso";
 
 const openai = process.env.OPENAI_API_KEY
   ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
@@ -207,17 +207,14 @@ trust_score: 0.9+ = clearly legit with lab tests; 0.6-0.9 = probably legit but g
     ? JSON.parse(verdictCall.function.arguments)
     : {};
 
-  // ── Step 3: Senso trust signal (additional context) ──
-  const senso = await getBrandTrustScore(structureArgs.name ?? input.brandName).catch(() => ({
-    score: 0.5,
-    context: "Senso unavailable",
-    sources: [] as string[],
-  }));
-
   // ── Assemble the result ──
+  // trust_score here is the STRUCTURED-RESEARCH score (OpenAI verdict only, no
+  // Senso). Senso is applied uniformly at match time in senso-trust.ts (50/50
+  // blend). Keeping this pure-OpenAI avoids double-dipping Senso for live-
+  // researched brands (the old 0.7×ai + 0.3×senso here + 0.5×static + 0.5×senso
+  // at match). Manual seeds already store OpenAI-only, so both paths now match.
   const slug = slugify(structureArgs.name ?? input.brandName);
-  const aiTrust = typeof verdictArgs.trust_score === "number" ? verdictArgs.trust_score : 0.5;
-  const blendedTrust = aiTrust * 0.7 + senso.score * 0.3;
+  const blendedTrust = typeof verdictArgs.trust_score === "number" ? verdictArgs.trust_score : 0.5;
 
   const brand: Brand = {
     id: slug,
