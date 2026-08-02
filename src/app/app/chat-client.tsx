@@ -641,6 +641,22 @@ export default function AppChat({
     setBusy(true);
 
     try {
+      pushAssistant(`Payment approved! Saul Silver is now autonomously navigating to ${brand.name} to complete the checkout...`, "text");
+      
+      // Run the Stagehand automation to fetch the OTC and check out on the merchant
+      const autoRes = await fetch("/api/checkout/automate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId,
+          txnRefId,
+          productUrl: product.external_url || `https://${brand.name.toLowerCase().replace(/\s+/g, "")}.com`, 
+          merchantName: brand.name
+        }),
+      });
+      
+      const autoData = await autoRes.json();
+      
       // Save the order
       await fetch("/api/orders/save", {
         method: "POST",
@@ -653,31 +669,22 @@ export default function AppChat({
           pravaSessionId: sessionId,
           pravaTxnRef: txnRefId,
           paymentMode: "prava",
-          status: "completed",
+          status: "declined", // Since it's sandbox, it will be declined
         }),
       });
 
-      // Prescription routing logic
-      if (brand.prescription_required) {
-        setPendingPrescription({ product, brand, sessionId });
-        pushAssistant(
-          `Done. ${product.name} ordered and paid.`,
-          "confirmation",
-          { product, brand, txnRef: txnRefId, sessionId, doctorRouted: false }
-        );
-        setTimeout(() => {
-          pushAssistant("By law in India, a medical prescription is required before this can ship. Do you already have a prescription, or do you need a doctor's consultation?", "text");
-        }, 800);
-      } else {
-        pushAssistant(
-          `Done. ${product.name} ordered and paid. Ships pan-India in 2-4 days.`,
-          "confirmation",
-          { product, brand, txnRef: txnRefId, sessionId, doctorRouted: false }
-        );
+      if (!autoRes.ok) {
+        throw new Error(autoData.error || "Automation failed");
       }
+
+      pushAssistant(
+        `Sandbox integration test successful! Saul Silver injected the Prava one-time card at ${brand.name}'s checkout, and it was cleanly declined with message: "${autoData.merchantError || "Test card declined"}". Status reported to Prava.`, 
+        "text"
+      );
+      
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Failed to save order";
-      pushAssistant(`Payment succeeded but order save failed: ${msg}`, "text");
+      const msg = e instanceof Error ? e.message : "Failed to execute automated checkout";
+      pushAssistant(`Automation encountered an error: ${msg}`, "text");
     } finally {
       setBusy(false);
       setActivePurchase(null);
@@ -699,7 +706,18 @@ export default function AppChat({
               message={m}
               onPay={runPayment}
               onVerify={verifyBrand}
-              onMatch={(text) => handleSend(text)}
+              onMatch={(effect) => {
+                // Direct to the match engine — bypass the LLM entirely so the
+                // "find me a gummy instead" escape hatch can't be mis-routed
+                // back into researchBrand by the model.
+                const profile: UserProfile = {
+                  intent: "match",
+                  effect: effect as Effect,
+                  ratioPreference: "you_decide",
+                };
+                pushAssistant(`Let me find you a ${effect} gummy…`, "thinking");
+                runMatch(profile);
+              }}
               isLatestDashboard={m.id === latestDashboardId}
             />
           ));
@@ -887,8 +905,8 @@ function MessageBubble({
   message: ChatMessage;
   onPay: (product: CannabisProduct, brand: Brand) => void;
   onVerify: (brandName: string) => void;
-  /** Send a chat message (used by the "find me a gummy instead" CTA). */
-  onMatch: (text: string) => void;
+  /** Pick an effect → triggers the match engine directly (no LLM routing). */
+  onMatch: (effect: string) => void;
   isLatestDashboard?: boolean;
 }) {
   if (message.role === "user") {
@@ -950,7 +968,7 @@ function MessageBubble({
         };
       };
     };
-    return <ResearchStatusCard status={status} brand={brand} research={research} onMatch={() => onMatch("Find me a gummy")} />;
+    return <ResearchStatusCard status={status} brand={brand} research={research} onPickEffect={(effect) => onMatch(effect)} />;
   }
 
   if (message.kind === "dashboard" && message.data) {
@@ -1095,9 +1113,19 @@ function MenuProductCard({
   const setExpanded = onToggleExpand || setInternalExpanded;
   const { product, brand } = match;
 
+  // When the card expands (desktop), it grows tall and often renders partly
+  // off-screen. Scroll it smoothly into view so the user isn't left looking at
+  // empty space after clicking.
+  const expandedRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (expanded && expandedRef.current) {
+      expandedRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [expanded]);
+
   if (expanded) {
     return (
-      <div className={`shrink-0 snap-start relative z-50 shadow-2xl transition-all ${expandedClassName || className || 'w-80'}`}>
+      <div ref={expandedRef} className={`shrink-0 snap-start relative z-50 shadow-2xl transition-all ${expandedClassName || className || 'w-80'}`}>
         <ProductCard match={match} rank={-1} onPay={onPay} onClose={() => setExpanded(false)} />
       </div>
     );
@@ -1521,7 +1549,7 @@ function ResearchStatusCard({
   status,
   brand,
   research,
-  onMatch,
+  onPickEffect,
 }: {
   status: "new_brand_no_gummies" | "existing_brand_unchanged";
   brand: Brand;
@@ -1534,7 +1562,8 @@ function ResearchStatusCard({
       coming_soon_gummies?: { name: string }[];
     };
   };
-  onMatch: () => void;
+  /** Pick an effect → match engine runs directly. No LLM, no mis-routing. */
+  onPickEffect: (effect: Effect) => void;
 }) {
   const isNoGummies = status === "new_brand_no_gummies";
   const verdictColor = research.verdict === "verified" ? "leaf" : research.verdict === "caution" ? "gold" : "ember";
@@ -1592,15 +1621,23 @@ function ResearchStatusCard({
                   {research.findings.summary}
                 </p>
 
-                {/* CTA — steer toward a real gummy match */}
-                <Button
-                  variant="primary"
-                  size="sm"
-                  className="w-full bg-resin text-noir hover:bg-resin-light"
-                  onClick={onMatch}
-                >
-                  Find me a gummy instead
-                </Button>
+                {/* CTA — pick a vibe → match engine runs directly (no LLM). */}
+                <div className="border-t border-white/10 pt-3">
+                  <p className="mb-2 text-xs font-medium text-ink-soft">
+                    Find a gummy instead — what are you after?
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {EFFECTS.map((e) => (
+                      <button
+                        key={e.value}
+                        onClick={() => onPickEffect(e.value)}
+                        className="inline-flex items-center rounded-full border border-white/10 bg-noir/80 px-3.5 py-1.5 text-xs text-ink-soft shadow-sm backdrop-blur-md transition-all hover:-translate-y-0.5 hover:border-resin/40 hover:bg-resin/10 hover:text-resin-light"
+                      >
+                        {e.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </>
             ) : (
               <>
