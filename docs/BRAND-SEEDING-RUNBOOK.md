@@ -387,15 +387,14 @@ applied. Check off the status as each lands.
 | 5 | MediCann | https://medicann.co.in | ☐ | ☐ | |
 | 6 | Andyou | https://andyou.in | ☐ | ☐ | |
 | 7 | Hebe Wellness | https://hebe-wellness.com | ☐ | ☐ | |
-| 8 | Cannazo | https://andyou.in | ☐ | ☐ | ⚠️ **URL in page.tsx is wrong** — points to andyou.in, not Cannazo's real site. Verify the correct URL before seeding (likely cannazo.in or similar). |
+| 8 | Cannazo | https://cannazoindia.com | ☐ | ☐ | D2C site. (Previously mislisted as andyou.in — fixed in page.tsx.) |
 | 9 | Cure By Design | https://curebydesign.in | ☐ | ☐ | |
 | 10 | Cannavedic | https://cannavedic.in | ☐ | ☐ | |
 | 11 | Qurist | https://qurist.in | ☐ | ☐ | |
 | 12 | Kushiva | https://www.kushiva.com | ☐ | ☐ | |
 | 13 | Moon Impact | https://trymoonimpact.com | ✅ | ✅ | Reference implementation — see `scripts/seed-moon-impact.ts` + `scripts/seed-senso-moon-impact.ts` |
 
-**Two known data issues to fix in `src/app/page.tsx` (not part of seeding, but flag them):**
-- **Cannazo URL** (row 8) is a duplicate of Andyou's. Find the real Cannazo URL before seeding that brand.
+**One known data issue to fix in `src/app/page.tsx` (not part of seeding, but flag it):**
 - **Polyherbs** (row 3) is on the Aarogya CBD marketplace, not its own D2C site. The `rail` should be `marketplace` and `marketplaces` should include `["aarogyacbd"]`, not `d2c`.
 
 ### Suggested seeding order
@@ -405,5 +404,5 @@ the marketplace/ambiguous ones for last:
 
 1. The Trost, Qurist, Cannavedic, Cure By Design — established D2C, likely rich product pages
 2. Magiccann, MediCann, Hebe Wellness, Kushiva, Sanan Relief, Andyou — D2C
-3. Cannazo — fix the URL first
+3. Cannazo — D2C site now confirmed (cannazoindia.com)
 4. Polyherbs — marketplace rail, different scrape approach

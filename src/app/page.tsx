@@ -23,7 +23,7 @@ const BRANDS: { name: string; url: string }[] = [
   { name: "MediCann", url: "https://medicann.co.in" },
   { name: "Andyou", url: "https://andyou.in" },
   { name: "Hebe Wellness", url: "https://hebe-wellness.com" },
-  { name: "Cannazo", url: "https://andyou.in" },
+  { name: "Cannazo", url: "https://cannazoindia.com" },
   { name: "Cure By Design", url: "https://curebydesign.in" },
   { name: "Cannavedic", url: "https://cannavedic.in" },
   { name: "Qurist", url: "https://qurist.in" },
