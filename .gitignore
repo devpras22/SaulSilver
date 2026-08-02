@@ -29,6 +29,10 @@ yarn-error.log*
 senso-context/
 fetch_pharmacies.js
 
+# Seed scripts — local-only data ingestion (not app code, breaks Vercel build
+# via dotenv import + gets typechecked by tsconfig). Keep locally, never commit.
+/scripts/
+
 # agent scaffolding (not relevant to the project)
 AGENTS.md
 CLAUDE.md
