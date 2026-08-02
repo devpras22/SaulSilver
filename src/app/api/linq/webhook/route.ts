@@ -31,6 +31,7 @@ async function stopTyping(chatId: string | undefined) {
 }
 
 export async function POST(req: NextRequest) {
+  let activeChatId: string | undefined;
   try {
     const origin = req.nextUrl.origin;
     const body = await req.json();
@@ -46,6 +47,7 @@ export async function POST(req: NextRequest) {
     }
 
     const { from, text, chatId } = parsed;
+    activeChatId = chatId;
     
     // FETCH OR INITIALIZE MEMORY
     const state = convos.get(from) ?? { chatId, messages: [] };
@@ -246,6 +248,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   } catch (e) {
     console.error("[linq/webhook] error:", e);
+    // Explicitly clear typing if something crashes
+    if (activeChatId) {
+      await stopTyping(activeChatId);
+    }
     return NextResponse.json({ ok: true, error: "handled" });
   }
 }

@@ -54,16 +54,22 @@ export interface SendOptions {
   chatId?: string;
 }
 
-async function linqFetch(path: string, body: unknown, method = "POST") {
+async function linqFetch(path: string, body?: unknown, method = "POST") {
   if (!API_KEY) throw new Error("LINQ_API_KEY not set");
-  const res = await fetch(`${BASE}${path}`, {
+  
+  const options: RequestInit = {
     method,
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${API_KEY}`,
     },
-    body: JSON.stringify(body),
-  });
+  };
+  
+  if (body !== undefined) {
+    options.body = JSON.stringify(body);
+  }
+  
+  const res = await fetch(`${BASE}${path}`, options);
   const data = await res.json().catch(() => ({}));
   if (!res.ok || data.success === false) {
     throw new Error(`Linq ${res.status}: ${JSON.stringify(data)}`);
@@ -102,7 +108,11 @@ export async function sendMessage({ to, text, link, parts, chatId }: SendOptions
  * Per Linq idea-starter: a typing indicator IS a loading state.
  */
 export async function setTyping(chatId: string, typing = true) {
-  return linqFetch(`/chats/${chatId}/typing`, { typing });
+  if (typing) {
+    return linqFetch(`/chats/${chatId}/typing`, {}, "POST");
+  } else {
+    return linqFetch(`/chats/${chatId}/typing`, undefined, "DELETE");
+  }
 }
 
 /** Send a multi-line status update as one text bubble. */
