@@ -18,6 +18,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // Support for multiple addresses
   const addresses = (user.user_metadata?.addresses as any[]) ?? [];
   const activeAddressId = (user.user_metadata?.active_address_id as string) ?? null;
+  // Saved phone (Shopflo SMS OTP target) — editable from the avatar menu.
+  const phone = (user.user_metadata?.phone as string) ?? null;
 
   return (
     <div className="relative min-h-screen">
@@ -36,7 +38,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
           <div className="flex shrink-0 items-center gap-2">
             <WalletButton />
-            <UserMenu email={user.email ?? ""} />
+            <UserMenu email={user.email ?? ""} phone={phone} />
           </div>
         </div>
 
@@ -51,7 +53,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <HeaderAddress addresses={addresses} activeAddressId={activeAddressId} />
           </div>
           <div className="flex shrink-0 items-center">
-            <UserMenu email={user.email ?? ""} />
+            <UserMenu email={user.email ?? ""} phone={phone} />
           </div>
         </div>
       </header>

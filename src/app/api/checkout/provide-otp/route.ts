@@ -33,20 +33,34 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // NOTE: do NOT use .single() here. If no row matches (the route hasn't
+  // written its awaiting_otp row yet, or it was already consumed), .single()
+  // throws PGRP116 "Cannot coerce the result to a single JSON object" — which
+  // is what surfaced as the cryptic client error. Use .select() + check length.
   const { data, error } = await supabase
     .from("checkout_otp_handoff")
     .update({ otp_value: cleanOtp, status: "provided", provided_at: new Date().toISOString() })
     .eq("purchase_id", purchaseId)
     .eq("status", "awaiting_otp") // can't override an already-provided/consumed row
-    .select("purchase_id, status")
-    .single();
+    .select("purchase_id, status");
 
-  if (error || !data) {
+  if (error) {
+    console.error("[provide-otp] db error:", error.message);
     return NextResponse.json(
-      { error: error?.message ?? "OTP row not found or already provided" },
-      { status: 404 }
+      { error: "Couldn't save the OTP. Try again." },
+      { status: 500 }
     );
   }
 
-  return NextResponse.json({ ok: true, status: data.status });
+  if (!data || data.length === 0) {
+    // No awaiting_otp row. Either the route hasn't reached the OTP gate yet
+    // (race — Shopflo still booting) or the OTP was already consumed. Return
+    // a specific, retryable signal so the client can decide what to do.
+    return NextResponse.json(
+      { error: "Checkout isn't waiting for an OTP yet — give it a moment and try again.", retryable: true },
+      { status: 409 }
+    );
+  }
+
+  return NextResponse.json({ ok: true, status: data[0].status });
 }

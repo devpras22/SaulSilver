@@ -432,19 +432,23 @@ async function shopfloCardStep(
   let filled = await shopflo.evaluate(buildFillFn() as () => number);
 
   // If nothing, drill into every other frame on the page (the Cashfree iframes).
+  // NOTE: the v3 Frame object only exposes .evaluate() — no .url() method.
+  // (Calling frame.url() throws "e.url is not a function" at runtime.) So we
+  // skip the shopflo frame by reference and just try-evaluate every other
+  // frame, catching cross-origin / detached failures.
   if (filled === 0) {
-    const shopfloUrl = shopflo.url();
     for (const f of page.frames()) {
       if (f === shopflo) continue;
-      const fUrl = f.url();
-      // Cashfree / payment-gateway iframes are typically on a pg.* or
-      // cashfree/juspay/razorpay domain. Don't restrict too tightly — any
-      // non-shopflo frame with a card input is fair game.
-      if (fUrl && shopfloUrl && fUrl === shopfloUrl) continue;
       try {
         const got = await f.evaluate(buildFillFn() as () => number);
         if (got > 0) {
           filled += got;
+          let fUrl = "";
+          try {
+            fUrl = await f.evaluate(new Function("return window.location.href;") as () => string);
+          } catch {
+            fUrl = "(unknown frame)";
+          }
           console.log("[checkout/automate] filled " + got + " card field(s) in frame: " + fUrl.slice(0, 80));
         }
       } catch {

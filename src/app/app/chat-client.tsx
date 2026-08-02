@@ -529,7 +529,7 @@ export default function AppChat({
   // poller can remove it (and its spinner) when payment completes.
   const webkitPaymentMsgRef = useRef<string | null>(null);
 
-  const runPayment = async (product: CannabisProduct, brand: Brand, skipAddressCheck = false, chosenEmail?: string) => {
+  const runPayment = async (product: CannabisProduct, brand: Brand, skipAddressCheck = false, chosenEmail?: string, resolvedPhone?: string) => {
     if (!savedAddress && !skipAddressCheck) {
       setPendingPayment({ product, brand });
       setAddressModalOpen(true);
@@ -546,7 +546,13 @@ export default function AppChat({
 
     // Gate: no phone number → ask for it (Shopflo sends a real SMS OTP).
     // Once saved, this never asks again.
-    if (!savedPhone) {
+    //
+    // resolvedPhone is passed in from submitPhone (NOT read from savedPhone
+    // state) because React state updates are async — reading savedPhone right
+    // after setSavedPhone() returns the STALE value, which caused the phone
+    // prompt to fire twice. Same closure trap the email gate had.
+    const phoneToUse = resolvedPhone ?? savedPhone;
+    if (!phoneToUse) {
       setPendingPhone({ product, brand });
       pushAssistant(
         `One thing before I check you out at ${brand.name}: their checkout (Shopflo) sends a one-time code via SMS to verify it's you. What's your phone number? I'll save it so you never have to give it again.`,
@@ -791,9 +797,10 @@ export default function AppChat({
         // Resume the purchase that was paused waiting for the phone.
         const p = pendingPhone;
         if (p) {
-          // Re-run with skipAddressCheck=true since we already passed that gate.
-          // chosenEmail isn't known yet — the email choice fires next.
-          runPayment(p.product, p.brand, true);
+          // Re-run with skipAddressCheck=true since we already passed that gate,
+          // and hand the phone in directly (resolvedPhone) so runPayment doesn't
+          // re-read the STALE savedPhone from closure and re-ask for it.
+          runPayment(p.product, p.brand, true, undefined, phone);
         }
       } else {
         const d = await res.json().catch(() => ({}));
@@ -808,14 +815,25 @@ export default function AppChat({
   };
 
   // Submit the OTP the user typed → /api/checkout/provide-otp.
+  // Retryable: if the route hasn't written its awaiting_otp row yet (race —
+  // Shopflo still booting), we get a 409 and retry once after a short delay
+  // instead of dumping the user back to a "try again" error.
   const submitOtp = async (code: string) => {
     if (!pendingOtp) return;
-    try {
-      const res = await fetch("/api/checkout/provide-otp", {
+    const post = () =>
+      fetch("/api/checkout/provide-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ purchaseId: pendingOtp.purchaseId, otp: code }),
       });
+
+    try {
+      let res = await post();
+      // 409 = route isn't waiting for OTP yet. Retry once after 2s.
+      if (res.status === 409) {
+        await new Promise((r) => setTimeout(r, 2000));
+        res = await post();
+      }
       if (res.ok) {
         setPendingOtp(null);
         pushAssistant("Got it — passing the OTP to the checkout now. Hang tight while it verifies and loads the card step.", "text");
