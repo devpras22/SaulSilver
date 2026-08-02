@@ -387,9 +387,14 @@ export default function AppChat({
       if (data.error) throw new Error(data.error);
 
       const status: string = data.status ?? "new_brand_added";
-      if (status === "new_brand_no_gummies" || status === "existing_brand_unchanged") {
-        // Honest-decline / freshness cards. data carries the brand + findings
-        // so the card can show the verdict + what they DO make.
+      if (
+        status === "new_brand_no_gummies" ||
+        status === "existing_brand_unchanged" ||
+        status === "research_unavailable" ||
+        status === "not_a_cannabis_brand"
+      ) {
+        // Honest-decline / freshness / couldn't-reach / not-cannabis cards.
+        // Each renders distinct Saul-voice copy via ResearchStatusCard.
         pushAssistant("", "research_status", {
           status,
           brand: data.brand,

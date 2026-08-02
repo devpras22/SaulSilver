@@ -68,6 +68,23 @@ export async function POST(req: NextRequest) {
     // ── Gather raw context (now footer-aware for licence extraction) ──
     const context = await gatherContext(brandName, website);
 
+    // ── HARD GATE: no context scraped → do NOT call OpenAI ──
+    // If the scrape returned nothing (site blocks the bot, wrong URL, offline),
+    // OpenAI has NOTHING to ground on and will hallucinate a plausible cannabis
+    // catalog from its training data (this happened with boheco.org — invented
+    // "BOHECO Pain Relief Balm" etc. from zero context). Abort honestly instead.
+    if (context.length === 0) {
+      return NextResponse.json({
+        status: "research_unavailable" as ResearchStatus,
+        brand: { name: brandName, website },
+        products: [],
+        research: null,
+        reason: "site_unreachable",
+        mock: IS_MOCK_RESEARCH,
+        cached: false,
+      });
+    }
+
     // ── Run the research agent ──
     const result = await researchBrand({ brandName, context, knownWebsite: website });
 
@@ -77,6 +94,26 @@ export async function POST(req: NextRequest) {
     // ── Compute the outcome status + decide what to persist ──
     let status: ResearchStatus;
     let delta: string[] | undefined; // names of genuinely-new gummies added (case 3)
+
+    // ── NON-CANNABIS GATE: context was fetched but the site has zero cannabis ──
+    // products of ANY type (gummies, oils, topicals — nothing). That means it's
+    // not a cannabis/cannabinoid brand at all (e.g. apple.com). Don't persist it
+    // and don't show the "they don't sell gummies" decline card — that card
+    // implies it IS a cannabis brand that just lacks edibles, which is a lie.
+    if (
+      result.gummyProducts.length === 0 &&
+      result.otherProducts.length === 0 &&
+      result.comingSoon.length === 0
+    ) {
+      return NextResponse.json({
+        status: "not_a_cannabis_brand" as ResearchStatus,
+        brand: result.brand,
+        products: [],
+        research: result.research,
+        mock: IS_MOCK_RESEARCH,
+        cached: false,
+      });
+    }
 
     if (isNewBrand) {
       // Cases 1 & 2.

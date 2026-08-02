@@ -123,7 +123,9 @@ export type ResearchStatus =
   | "new_brand_added"
   | "existing_brand_refreshed"
   | "existing_brand_unchanged"
-  | "cached";
+  | "cached"
+  | "research_unavailable"
+  | "not_a_cannabis_brand";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CANNABIS DOMAIN — the SaulSilver catalog + matching types
