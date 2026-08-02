@@ -47,7 +47,7 @@ export default function Home() {
         <nav className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <Wordmark />
           <div className="flex items-center gap-2 sm:gap-3">
-            <Button variant="outline" size="sm" className="flex border-resin/20 bg-noir/50 backdrop-blur-md text-ink hover:bg-resin/10 hover:border-resin/50 px-3 sm:px-4" asChild>
+            <Button variant="outline" size="sm" className="flex border-resin/20 bg-noir/50 backdrop-blur-md text-ink hover:bg-resin/10 hover:border-resin/50 hover:text-white px-3 sm:px-4" asChild>
               <a href="sms:+12135396502?body=Hello%20World">
                 <span className="text-base sm:mr-1.5">💬</span> 
                 <span className="hidden sm:inline">iMessage Saul</span>

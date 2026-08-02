@@ -129,5 +129,23 @@ SaulSilver lives natively inside your phone. Using Linq, we built a message-nati
    ```
    Open [http://localhost:3000](http://localhost:3000) to start matching.
 
+## 🟥 Current Issues
+
+Live tracker of the real blockers on Step 5 (autonomous merchant checkout).
+Full detail in **[`CURRENT-ISSUES.md`](./CURRENT-ISSUES.md)** — kept separate so
+this README stays stable. Summary of what's actually broken right now:
+
+- **🔴 Shopflo SMS-OTP wall** — The Trost (and likely our other Indian Shopify
+  stores) use Shopflo, which gates the entire checkout behind a **real SMS OTP**
+  before any card form appears. No card fields exist in the DOM until OTP is
+  verified. This is an identity-verification gate, not a code bug — no amount of
+  browser automation reaches the card form without a real Indian phone number.
+  Discord question posted to Prava re: whether their Browser Harness handles this.
+- **🟡 Moon Impact cannot accept payments** — `trymoonimpact.com/checkout`
+  shows *"This store can't accept payments right now."* Dead as a demo target.
+- **🟢 Honesty fixes shipped** — killed a fabricated "Test card declined"
+  success message; made `reportStatus` verify Prava actually received the
+  DECLINED report instead of fire-and-forget.
+
 ## 📜 Disclaimer
 *For legal markets only. Not medical advice. Not a seller. SaulSilver is a discovery, trust, and orchestration layer.*
