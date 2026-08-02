@@ -31,7 +31,6 @@ export async function POST(req: NextRequest) {
     console.log(`[checkout/automate] Initializing Stagehand for ${merchantName}...`);
     const stagehand = new Stagehand({
       env: "LOCAL", // Use local Playwright instance
-      enableCaching: false,
     });
     await stagehand.init();
 
