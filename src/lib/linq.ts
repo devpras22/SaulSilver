@@ -23,7 +23,9 @@ export const LINQ_CONFIGURED = Boolean(API_KEY && FROM);
 
 export interface MessagePart {
   type: "text" | "media" | "link" | "imessage_app";
+  /** text part text / link part URL — Linq uses `value` for BOTH text and link parts. */
   value?: string;
+  /** media part URL (image/video). NOT used by link parts — links use `value`. */
   url?: string;
   attachment_id?: string;
   app?: {

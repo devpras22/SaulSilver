@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { enrichBrandsWithSensoTrust } from "@/lib/senso-trust";
 import { matchProducts } from "@/lib/sommelier";
 import { productImage } from "@/lib/utils";
+import { productBrief, sortByPotency } from "@/lib/product-brief";
 import { createSession } from "@/lib/prava";
 import { loadConvo, saveConvo, type ConvoState } from "@/lib/imessage-store";
 import { recordImessageSession } from "@/lib/imessage-sessions";
@@ -121,10 +122,13 @@ export async function POST(req: NextRequest) {
       }
 
       // Send the Prava hosted checkout as a Rich Link preview card.
+      // NOTE: Linq link parts take the URL in `value`, NOT `url` (media parts
+      // use `url`). Using `url` here → 1005 "link part must have a non-empty
+      // value" and the link never sends. Confirmed against the Linq docs.
       await sendMessage({
         to: from,
         chatId,
-        parts: [{ type: "link", url: session.iframe_url }],
+        parts: [{ type: "link", value: session.iframe_url }],
       });
 
       // Record the session so the cron poller can watch payment-result and
@@ -206,9 +210,16 @@ export async function POST(req: NextRequest) {
           { intent: "match", effect: args.effect, tolerance: args.tolerance, ratioPreference: args.ratioPreference },
           "effect"
         );
-        
-        const topResults = matches.slice(0, limit);
-        
+
+        // ── Potency override ──
+        // matchProducts ranks by effect/trust/budget — it has no concept of
+        // "strongest." When the user asks for most THC / strongest / highest mg,
+        // re-sort the candidates by potency-per-gummy BEFORE slicing to `limit`.
+        // Without this, "strongest gummy" returns whatever ranked #1 on effect.
+        const wantsPotency = /\b(strong|strongest|most thc|highest|potent|heaviest|kick|hard(?:est) hitt)\b/i.test(text);
+        const rankedForUser = wantsPotency ? sortByPotency(matches) : matches;
+        const topResults = rankedForUser.slice(0, limit);
+
         if (topResults.length === 0) {
           await sendMessage({
             to: from,
@@ -218,12 +229,17 @@ export async function POST(req: NextRequest) {
           await stopTyping(chatId);
           return NextResponse.json({ ok: true });
         }
-        
+
         // ── Feed results back to Saul so HE writes the recommendation text ──
+        // Each product gets its FULL brief (strength, ingredients, effects,
+        // reviews, safety, trust) — so Saul can answer ANY follow-up question
+        // (strongest? Ashwagandha? reviews? side effects?) from the data,
+        // instead of going blind on name+price only.
         const productSummary = topResults.map((match, i) => {
           const sensoReason = match.reasons.find((r: string) => r.startsWith("Senso: "));
-          return `${i + 1}. ${match.brand.name} - ${match.product.name} — ₹${match.product.price_inr}${sensoReason ? ` (${sensoReason.replace("Senso: ", "")})` : ""}`;
-        }).join("\n");
+          const brief = productBrief(match.product, match.brand);
+          return `${i + 1}. ${match.brand.name} - ${match.product.name}\n  ${brief}${sensoReason ? `\n  senso: ${sensoReason.replace("Senso: ", "")}` : ""}`;
+        }).join("\n\n");
         
         const optionsText = topResults.length === 1 ? "1" : Array.from({ length: topResults.length }, (_, i) => i + 1).join(" or ");
         
@@ -291,15 +307,31 @@ export async function POST(req: NextRequest) {
         let topResults: any[] = [];
         
         if (data.products && data.products.length > 0) {
-          topResults = data.products.slice(0, limit).map((p: any) => ({
+          // ── Potency-aware ordering ──
+          // researchBrand returns products in scrape order. When the user asks
+          // for "strongest" / "most THC," sort by mg/gummy FIRST so the top N
+          // are genuinely the strongest. Previously we sliced in scrape order,
+          // which is why "strongest from the trost" returned a 5% beginner
+          // gummy instead of the 13% heavy one.
+          const wantsPotency =
+            /\b(strong|strongest|most thc|highest|potent|heaviest|kick|hard(?:est) hitt)\b/i.test(text);
+          const ordered = wantsPotency
+            ? sortByPotency(data.products.map((p: any) => ({ product: p }))).map((x) => x.product)
+            : data.products;
+
+          topResults = ordered.slice(0, limit).map((p: any) => ({
             brand: data.brand,
             product: p,
             reasons: ["Brand lookup"]
           }));
-          
-          content += `Found ${data.products.length} products. Highlights:\n`;
+
+          content += `Found ${data.products.length} products${wantsPotency ? " (sorted strongest first)" : ""}. Full details:\n`;
+          // Full brief per product — strength, ingredients, effects, reviews,
+          // safety, trust. This is what lets Saul answer "strongest?",
+          // "Ashwagandha?", "what do reviews say?" all from the same data.
           topResults.forEach((match, i) => {
-            content += `${i + 1}. ${match.product.name} (₹${match.product.price_inr || 'TBD'}): ${match.product.description ? match.product.description.substring(0, 100) + '...' : match.product.type}\n`;
+            const brief = productBrief(match.product, data.brand, data.research);
+            content += `${i + 1}. ${match.product.name}\n  ${brief}\n`;
           });
         } else {
           content += "No gummies/products found.\n";

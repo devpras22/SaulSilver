@@ -206,7 +206,39 @@ you have affirmative evidence the charge succeeded (a real authorization code
 from a real gateway). When in doubt, report the honest sandbox outcome and log
 it plainly — never APPROVE to make a demo "look better."
 
-Instagram blocks scraping and search often returns no follower count (Hebe).
-Set `instagram_followers: null` and take the −0.04 rubric dock. Never guess a
-number to fill the field — that's exactly the "fabricate" failure the runbook
-warns about for emails, and it applies to follower counts too.
+---
+
+## §11. Don't hand-pick what the LLM sees — serialize the full record (2026-08-03)
+
+**Mistake:** The iMessage webhook fed Saul a hand-picked summary string per
+product — `name (₹price): truncated description`. So whenever a user asked
+about ANYTHING other than name/price ("strongest?", "Ashwagandha?",
+"what do reviews say?", "side effects?", "licensed?"), Saul answered blind.
+The structured fields we capture during research (cannabinoids, composition,
+reviews_summary, red_flags, side_effects, warnings, key_uses, trust_breakdown)
+were sitting in the DB — 50/52 products have composition populated, every
+brand has a research row with reviews — but none of it reached the LLM.
+
+**My first fix attempt was wrong too:** I built a narrow `potency.ts` helper
+for the "strongest" case. The user (correctly) called this out: "then how many
+helpers are we gonna create?" A helper per question type is unmaintainable
+sprawl — Ashwagandha would need an ingredient helper, reviews a sentiment
+helper, etc.
+
+**Root cause:** I was treating each user question as a new feature instead of
+recognizing the pattern — the LLM needs the *full structured record* in
+context, then it answers any question from it. The summary string was a
+lossy bottleneck.
+
+**Fix:** ONE serializer (`src/lib/product-brief.ts` → `productBrief()`) that
+dumps every populated field of the product + brand + research into a compact
+block (strength, ingredients, effects, timing, price, trust, reviews/research,
+safety). Whatever the user asks about, the answer is already in Saul's context.
+
+**Rule going forward:** when an LLM is answering questions about a structured
+record, hand it the WHOLE record (serialized), not a summary of the fields you
+*think* it'll need. A summary you pick today is blind to the question someone
+asks tomorrow. The full record is forward-compatible with any question for free.
+The only exception is hard token limits — and even then, prefer trimming verbose
+fields over dropping whole categories, because you can't predict which category
+the next question needs.
