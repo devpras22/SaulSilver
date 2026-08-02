@@ -986,7 +986,7 @@ function CatalogList({
             </button>
             
             {isOpen && (
-              <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-4 pt-1 pl-4 pr-6 scrollbar-hide border-t border-border/30">
+              <div className="flex flex-col sm:flex-row sm:snap-x sm:snap-mandatory gap-3 sm:overflow-x-auto pb-4 pt-4 sm:pt-1 pl-4 pr-4 sm:pr-6 sm:scrollbar-hide border-t border-border/30">
                 {vibe.products.map(m => (
                   <MenuProductCard key={m.product.id} match={m} onPay={onPay} />
                 ))}
@@ -1003,14 +1003,6 @@ function MenuProductCard({ match, onPay }: { match: ProductMatch; onPay: (p: Can
   const [expanded, setExpanded] = useState(false);
   const { product, brand } = match;
 
-  if (expanded) {
-    return (
-      <div className="w-80 shrink-0 snap-start">
-        <ProductCard match={match} rank={-1} onPay={onPay} onClose={() => setExpanded(false)} />
-      </div>
-    );
-  }
-
   const cleanName = product.name
     .replace(new RegExp(`\\b${product.ratio || ""}\\b`, "gi"), "")
     .replace(/\b\d+mg\b/gi, "")
@@ -1018,10 +1010,10 @@ function MenuProductCard({ match, onPay }: { match: ProductMatch; onPay: (p: Can
     .trim()
     .replace(/,\s*$/, "");
 
-  return (
+  const collapsedUI = (
     <Card 
       onClick={() => setExpanded(true)}
-      className="w-56 shrink-0 snap-start cursor-pointer overflow-hidden border-white/10 bg-black/40 backdrop-blur-md transition-all hover:border-resin/40 hover:shadow-[0_0_15px_rgba(202,255,10,0.15)] group"
+      className="w-full sm:w-56 shrink-0 sm:snap-start cursor-pointer overflow-hidden border-white/10 bg-black/40 backdrop-blur-md transition-all hover:border-resin/40 hover:shadow-[0_0_15px_rgba(202,255,10,0.15)] group"
     >
       <div className="h-28 w-full bg-gradient-to-b from-resin/5 to-black/60 relative overflow-hidden border-b border-white/10">
         <div className="absolute inset-0 flex items-center justify-center">
@@ -1032,7 +1024,6 @@ function MenuProductCard({ match, onPay }: { match: ProductMatch; onPay: (p: Can
             onError={(e) => {
               e.currentTarget.style.display = 'none';
               e.currentTarget.parentElement?.classList.add('opacity-10');
-              // fallback to Leaf icon
               e.currentTarget.parentElement!.innerHTML = '<svg class="w-12 h-12 text-resin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>';
             }}
           />
@@ -1057,6 +1048,41 @@ function MenuProductCard({ match, onPay }: { match: ProductMatch; onPay: (p: Can
         </div>
       </CardContent>
     </Card>
+  );
+
+  return (
+    <>
+      <div className={expanded ? "hidden sm:block sm:hidden" : "block"}>
+        {collapsedUI}
+      </div>
+
+      {expanded && (
+        <>
+          {/* Desktop Inline Expansion */}
+          <div className="hidden sm:block w-80 shrink-0 snap-start">
+            <ProductCard match={match} rank={-1} onPay={onPay} onClose={() => setExpanded(false)} />
+          </div>
+
+          {/* Mobile Bottom Sheet Modal Expansion */}
+          <div className="fixed inset-0 z-[100] flex flex-col justify-end bg-black/80 backdrop-blur-sm sm:hidden animate-fade-in">
+            <div className="absolute inset-0" onClick={() => setExpanded(false)} />
+            <div className="relative animate-fade-in-up w-full rounded-t-3xl overflow-hidden bg-noir border-t border-resin/20 shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
+               <div className="flex justify-center p-3 pb-1" onClick={() => setExpanded(false)}>
+                 <div className="h-1 w-12 rounded-full bg-white/20" />
+               </div>
+               <div className="max-h-[85vh] overflow-y-auto pb-[env(safe-area-inset-bottom)]">
+                 <ProductCard match={match} rank={-1} onPay={(p, b) => { setExpanded(false); onPay(p, b); }} onClose={() => setExpanded(false)} />
+               </div>
+            </div>
+          </div>
+          
+          {/* Keep the collapsed UI visible underneath the modal on mobile so layout doesn't shift */}
+          <div className="block sm:hidden">
+            {collapsedUI}
+          </div>
+        </>
+      )}
+    </>
   );
 }
 
@@ -1283,7 +1309,7 @@ function BrandReport({
               {products.length > 0 && (
                 <div className="mt-4 border-t border-white/10 pt-4">
                   <p className="mb-3 text-xs uppercase tracking-wider text-white/50">{products.length} product{products.length > 1 ? "s" : ""} from {brand.name}</p>
-                  <div className="flex w-full snap-x snap-mandatory gap-3 overflow-x-auto pb-4 scrollbar-hide">
+                  <div className="flex w-full flex-col sm:flex-row sm:snap-x sm:snap-mandatory gap-3 sm:overflow-x-auto pb-4 sm:scrollbar-hide">
                     {products.map((p, i) => (
                       <MenuProductCard key={i} match={{ product: p, brand, score: 1, reasons: [], warnings: [] }} onPay={onPay} />
                     ))}
