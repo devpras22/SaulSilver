@@ -276,7 +276,11 @@ export default function AppChat({
           } else if (tool.function.name === "researchBrand") {
             const args = JSON.parse(tool.function.arguments);
             pushAssistant(`Sure, pulling up the dossier on ${args.brandName}...`, "text");
-            await verifyBrand(args.brandName);
+            // If the user pasted a URL in their message, pass it through so the
+            // research uses that exact site (skips discovery, avoids wrong-TLD).
+            const lastUser = [...messages].reverse().find((m) => m.role === "user");
+            const urlMatch = lastUser?.content?.match(/https?:\/\/[^\s)]+/i);
+            await verifyBrand(args.brandName, urlMatch?.[0]);
           }
         }
       } else if (data.content) {
@@ -369,7 +373,7 @@ export default function AppChat({
   // One endpoint, five outcomes. The status field drives which card renders:
   //   no-gummies / unchanged  → research_status card (honest decline / freshness)
   //   added / refreshed / cached → dashboard card (the full brand report)
-  const verifyBrand = async (brandName: string) => {
+  const verifyBrand = async (brandName: string, website?: string) => {
     setBusy(true);
     pushAssistant(`Looking into ${brandName}…`, "thinking");
     try {
@@ -380,7 +384,8 @@ export default function AppChat({
         // hand-scored verdict (verified/caution/etc.). forceRefresh is reserved
         // for an explicit freshness check ("is X's new gummy out yet?") so we
         // don't let a live OpenAI re-snap overwrite a curated verdict.
-        body: JSON.stringify({ brandName }),
+        // If a URL was passed (user pasted one), include it so discovery is skipped.
+        body: JSON.stringify(website ? { brandName, website } : { brandName }),
       });
       const data = await res.json();
       setMessages((m) => m.filter((msg) => msg.kind !== "thinking"));

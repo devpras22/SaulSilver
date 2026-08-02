@@ -67,13 +67,24 @@ export async function POST(req: NextRequest) {
 
     // ── STEP 0: Website discovery ──
     // A brand name alone gives us nothing to scrape. If no URL was passed
-    // (the chat path: user just types "BOHECO"), resolve one via OpenAI first.
-    // TLDs are ambiguous (.ai vs .com can be different companies), so we use
-    // OpenAI rather than guessing .com. The discovered URL is returned to the
-    // client and shown as a hyperlink so the user can verify WHICH site ran.
+    // (the chat path: user just types "sanan relief"), resolve one.
+    //
+    // Order: Supabase first (a seeded/known brand's website is hand-verified and
+    // authoritative — OpenAI doesn't know small Indian brands like Sanan Relief
+    // or Moon Impact and returns "unknown" for them), THEN OpenAI discovery as
+    // the fallback for genuinely-new brands a judge might name.
     let resolvedWebsite = website;
     if (!resolvedWebsite) {
-      resolvedWebsite = await discoverWebsite(brandName);
+      const { data: known } = await supabase
+        .from("brands")
+        .select("website")
+        .eq("id", slug)
+        .maybeSingle();
+      if (known?.website) {
+        resolvedWebsite = known.website;
+      } else {
+        resolvedWebsite = await discoverWebsite(brandName);
+      }
       if (!resolvedWebsite) {
         return NextResponse.json({
           status: "website_not_found" as ResearchStatus,
