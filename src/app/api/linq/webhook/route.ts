@@ -5,6 +5,7 @@ import OpenAI from "openai";
 import { createClient } from "@/lib/supabase/server";
 import { enrichBrandsWithSensoTrust } from "@/lib/senso-trust";
 import { matchProducts } from "@/lib/sommelier";
+import { productImage } from "@/lib/utils";
 
 /**
  * POST /api/linq/webhook — Linq inbound message webhook.
@@ -22,6 +23,7 @@ const convos = new Map<string, ConvoState>();
 
 export async function POST(req: NextRequest) {
   try {
+    const origin = req.nextUrl.origin;
     const body = await req.json();
     const event = body.event_type ?? body.type ?? "message.received";
 
@@ -70,11 +72,15 @@ export async function POST(req: NextRequest) {
             })
           });
           
-          let paymentUrl = "https://prava.space/checkout"; // fallback
+            let paymentUrl = "https://prava.space/checkout"; // fallback
           if (paymentRes.ok) {
             const payment = await paymentRes.json();
             paymentUrl = payment.attach_url || payment.approval_url || paymentUrl;
           }
+          
+          // Import productImage here if not already imported at top, wait it is imported.
+          const imgPath = productImage(selected.brand.id, selected.product.name, selected.product.image_url);
+          const absoluteImgUrl = imgPath.startsWith("http") ? imgPath : `${origin}${imgPath}`;
           
           // 2. Send the Agentcard (iMessage App) part
           const parts: MessagePart[] = [{
@@ -89,7 +95,7 @@ export async function POST(req: NextRequest) {
             layout: {
               caption: "Secure Checkout",
               subcaption: `${selected.brand.name} - ${selected.product.name}`,
-              image_url: selected.product.image_url || "https://images.unsplash.com/photo-1596526131083-e8c633c948d2?w=400&q=80"
+              image_url: absoluteImgUrl
             }
           }];
 
@@ -174,8 +180,9 @@ export async function POST(req: NextRequest) {
           
           // Step 4a: Send all images first (the photo dump)
           top3.forEach((match) => {
-            const imageUrl = match.product.image_url || "https://images.unsplash.com/photo-1596526131083-e8c633c948d2?w=400&q=80";
-            parts.push({ type: "media", url: imageUrl });
+            const imgPath = productImage(match.brand.id, match.product.name, match.product.image_url);
+            const absoluteImgUrl = imgPath.startsWith("http") ? imgPath : `${origin}${imgPath}`;
+            parts.push({ type: "media", url: absoluteImgUrl });
           });
           
           // Step 4b: Send one single casual text bubble explaining the stash
@@ -185,11 +192,10 @@ export async function POST(req: NextRequest) {
             summaryText += `${index + 1}. ${match.brand.name} ${match.product.name} — ₹${match.product.price_inr}\n`;
             
             const sensoReason = match.reasons.find(r => r.startsWith("Senso: "));
-            const primaryReason = match.reasons[0];
             if (sensoReason) {
                summaryText += `   "${sensoReason.replace("Senso: ", "").trim()}"\n\n`;
             } else {
-               summaryText += `   ${primaryReason}\n\n`;
+               summaryText += `\n`;
             }
           });
           
@@ -205,6 +211,9 @@ export async function POST(req: NextRequest) {
           // Keep convo so they can reply 1/2/3, and store recommendations
           state.pendingRecommendations = top3;
           convos.set(from, state);
+          
+          if (chatId) await setTyping(chatId, false).catch(() => {});
+          return NextResponse.json({ ok: true });
         } else {
           await sendMessage({
             to: from,
