@@ -1,11 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { parseInbound, sendMessage, setTyping, MessagePart } from "@/lib/linq";
 import { askSaul } from "@/lib/saul-agent";
-import OpenAI from "openai";
 import { createClient } from "@/lib/supabase/server";
 import { enrichBrandsWithSensoTrust } from "@/lib/senso-trust";
 import { matchProducts } from "@/lib/sommelier";
 import { productImage } from "@/lib/utils";
+import { createSession } from "@/lib/prava";
+import { loadConvo, saveConvo, type ConvoState } from "@/lib/imessage-store";
+import { recordImessageSession } from "@/lib/imessage-sessions";
+
+/**
+ * The agent owns the mailbox — order confirmations + tracking route back to
+ * Saul's AgentMail inbox, same narrative as the web flow (see chat-client.tsx).
+ * iMessage users have no email of their own, so we use this for `userEmail`.
+ * Prava keys saved cards on the userId below, not on this email.
+ */
+const AGENT_INBOX_EMAIL = "saulsilver@agentmail.to";
 
 /**
  * POST /api/linq/webhook — Linq inbound message webhook.
@@ -15,15 +25,12 @@ import { productImage } from "@/lib/utils";
  * IMPORTANT: On Vercel serverless, the runtime can kill the function
  * the instant a Response is returned. So we MUST await setTyping(false)
  * BEFORE every return — never in a finally block.
+ *
+ * Convo state is persisted in the `imessage_convos` Supabase table (NOT an
+ * in-memory Map) — a follow-up reply can hit a different instance, and a
+ * process-local Map would silently lose pendingRecommendations. Every state
+ * mutation is followed by saveConvo().
  */
-
-// Conversation state for SMS users
-interface ConvoState {
-  chatId: string;
-  messages: OpenAI.Chat.ChatCompletionMessageParam[];
-  pendingRecommendations?: any[];
-}
-const convos = new Map<string, ConvoState>();
 
 /** Helper: clear typing indicator, swallowing errors. */
 async function stopTyping(chatId: string | undefined) {
@@ -48,96 +55,122 @@ export async function POST(req: NextRequest) {
 
     const { from, text, chatId } = parsed;
     activeChatId = chatId;
-    
-    // FETCH OR INITIALIZE MEMORY
-    const state = convos.get(from) ?? { chatId, messages: [] };
+
+    // FETCH OR INITIALIZE PERSISTENT STATE (Supabase, not in-memory).
+    const state: ConvoState = await loadConvo(from);
 
     // Update chatId just in case it changed
     if (chatId) state.chatId = chatId;
     
     // ── SELECTION BRANCH: user replied 1/2/3 to pick a recommendation ──
-    if (state.pendingRecommendations && ["1", "2", "3"].includes(text.trim())) {
+    if (state.pendingRecommendations && /^\d+$/.test(text.trim())) {
       const selectedIndex = parseInt(text.trim()) - 1;
-      const selected = state.pendingRecommendations[selectedIndex];
-      
-      if (selected) {
-        if (chatId) await setTyping(chatId, true).catch(() => {});
+      const count = state.pendingRecommendations.length;
 
-        // 1. Create a payment via Linq Agentcard API
-        const paymentRes = await fetch("https://api.linqapp.com/api/partner/v3/payments", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${process.env.LINQ_API_KEY}`,
-            "Idempotency-Key": crypto.randomUUID(),
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            handle: from,
-            amount_cents: Math.round(selected.product.price_inr * 100),
-            currency: "inr",
-            description: `Order: ${selected.product.name}`,
-            merchant: {
-              name: selected.brand.name,
-              url: selected.brand.website || "https://prava.space"
-            }
-          })
+      // Out of range: tell them how many we actually sent. DON'T fall through
+      // to the LLM with "3" (that would ask Saul about gummies for "3").
+      if (selectedIndex < 0 || selectedIndex >= count) {
+        const valid = count === 1 ? "1" : Array.from({ length: count }, (_, i) => i + 1).join(" or ");
+        await sendMessage({
+          to: from,
+          chatId,
+          text: `i only sent you ${count} option${count === 1 ? "" : "s"} lol. reply ${valid}`,
         });
-        
-        let paymentUrl = "";
-        let paymentWorked = false;
-        if (paymentRes.ok) {
-          const payment = await paymentRes.json();
-          paymentUrl = payment.attach_url || payment.approval_url || "";
-          paymentWorked = !!paymentUrl;
-        }
-        
-        if (paymentWorked && paymentUrl) {
-          // Send a rich link preview — tappable card that opens Prava checkout in-app
-          await sendMessage({
-            to: from,
-            chatId,
-            parts: [{ type: "link", url: paymentUrl }],
-          });
-          
-          // Follow up with a casual text
-          await sendMessage({
-            to: from,
-            chatId,
-            text: `thats ur secure checkout for the ${selected.product.name} 🔒 tap it and prava handles the rest. ur card info never touches us`,
-          });
-        } else {
-          // Payment API didn't work — send a text explanation
-          await sendMessage({
-            to: from,
-            chatId,
-            text: `yo so the payment link didnt generate rn... prava sandbox is being weird. but the product is ${selected.product.name} by ${selected.brand.name} for ₹${selected.product.price_inr}. you can grab it from their site directly or try again in a bit`,
-          });
-        }
-        
-        // Clear pending, but keep the chat history
-        delete state.pendingRecommendations;
-        convos.set(from, state);
-        
         await stopTyping(chatId);
         return NextResponse.json({ ok: true });
       }
+
+      const selected = state.pendingRecommendations[selectedIndex];
+      if (chatId) await setTyping(chatId, true).catch(() => {});
+
+      // Create a real Prava session — same code path the web app uses
+      // (/api/pay → createSession). Returns iframe_url = Prava's hosted
+      // checkout, which we send as an iMessage Rich Link. The OLD code here
+      // called the Linq Payments API instead and never touched Prava — that's
+      // why the checkout link never came through.
+      //
+      // userId is phone-derived so Prava recognizes a returning iMessage user
+      // and surfaces their saved card next time (same role Supabase user.id
+      // plays on web). merchantUrl pins the real destination merchant so the
+      // virtual card is genuinely scoped to the checkout target (Step 5 req).
+      let session;
+      try {
+        session = await createSession({
+          userId: `imessage_${from}`,
+          userEmail: AGENT_INBOX_EMAIL,
+          totalAmount: selected.product.price_inr.toFixed(2),
+          currency: "INR",
+          description: `Order: ${selected.product.name}`,
+          merchantName: selected.brand.name,
+          merchantUrl: selected.brand.website || origin,
+          merchantCountryIso2: "IN",
+          productDescription: `${selected.product.name} — ${selected.brand.name}`,
+        });
+      } catch (e) {
+        const reason = e instanceof Error ? e.message : "unknown error";
+        console.error("[linq/webhook] prava createSession failed:", reason);
+        await sendMessage({
+          to: from,
+          chatId,
+          text: `yo the checkout link didnt generate rn — prava said: ${reason}. the product is ${selected.product.name} by ${selected.brand.name} for ₹${selected.product.price_inr}. try again in a bit`,
+        });
+        delete state.pendingRecommendations;
+        await saveConvo(state);
+        await stopTyping(chatId);
+        return NextResponse.json({ ok: true });
+      }
+
+      // Send the Prava hosted checkout as a Rich Link preview card.
+      await sendMessage({
+        to: from,
+        chatId,
+        parts: [{ type: "link", url: session.iframe_url }],
+      });
+
+      // Record the session so the cron poller can watch payment-result and
+      // report the outcome to Prava (iMessage has no client-side completion
+      // callback — checkout happens out-of-band in the browser sheet).
+      await recordImessageSession({
+        sessionId: session.session_id,
+        phone: from,
+        chatId: chatId ?? state.chatId,
+        productName: selected.product.name,
+        brandName: selected.brand.name,
+        amountInr: selected.product.price_inr,
+      }).catch((e) =>
+        console.warn("[linq/webhook] recordImessageSession failed:", e instanceof Error ? e.message : e)
+      );
+
+      // Follow up with a casual text.
+      await sendMessage({
+        to: from,
+        chatId,
+        text: `thats ur secure checkout for the ${selected.product.name} 🔒 tap it and prava handles the rest. ur card info never touches us`,
+      });
+
+      // Clear pending, but keep the chat history.
+      delete state.pendingRecommendations;
+      await saveConvo(state);
+
+      await stopTyping(chatId);
+      return NextResponse.json({ ok: true });
     }
 
     // ── MAIN BRANCH: regular message → ask Saul ──
     
     // Append user message
     state.messages.push({ role: "user", content: text });
-    
+
     // SAVE IMMEDIATELY SO WE DON'T GET THE GOLDFISH BUG
-    convos.set(from, state);
-    
+    await saveConvo(state);
+
     if (chatId) await setTyping(chatId, true).catch(() => {});
 
     const response = await askSaul(state.messages);
     const aiMessage = response.choices[0].message;
-    
+
     state.messages.push(aiMessage);
-    convos.set(from, state);
+    await saveConvo(state);
     
     if (aiMessage.tool_calls && aiMessage.tool_calls.length > 0) {
       const toolCall = aiMessage.tool_calls[0];
@@ -160,7 +193,7 @@ export async function POST(req: NextRequest) {
             chatId,
             text: "damn the catalog is totally empty rn. thats not supposed to happen lol",
           });
-          convos.delete(from);
+          await saveConvo({ ...state, pendingRecommendations: undefined });
           await stopTyping(chatId);
           return NextResponse.json({ ok: true });
         }
@@ -205,8 +238,8 @@ export async function POST(req: NextRequest) {
         const followUp = await askSaul(state.messages);
         const saulResponse = followUp.choices[0].message;
         state.messages.push(saulResponse);
-        convos.set(from, state);
-        
+        await saveConvo(state);
+
         const saulText = saulResponse.content || `found ${topResults.length} options for you. reply ${optionsText} to cop one`;
         
         // Send images as photo dump
@@ -228,8 +261,8 @@ export async function POST(req: NextRequest) {
         
         // Store recommendations for selection
         state.pendingRecommendations = topResults;
-        convos.set(from, state);
-        
+        await saveConvo(state);
+
         await stopTyping(chatId);
         return NextResponse.json({ ok: true });
       } else if (toolCall.type === "function" && toolCall.function.name === "researchBrand") {
@@ -311,9 +344,9 @@ export async function POST(req: NextRequest) {
         } else if (saulResponse.content) {
           await sendMessage({ to: from, chatId, text: saulResponse.content });
         }
-        
-        convos.set(from, state);
-        
+
+        await saveConvo(state);
+
         await stopTyping(chatId);
         return NextResponse.json({ ok: true });
       } else {
