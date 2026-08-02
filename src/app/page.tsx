@@ -17,7 +17,7 @@ import {
 
 const BRANDS: { name: string; url: string }[] = [
   { name: "Magiccann", url: "https://magiccann.in" },
-  { name: "Sanan Relief", url: "https://sananrelief.com" },
+
   { name: "Polyherbs", url: "https://www.aarogyacbd.com/brand/polyherbs" },
   { name: "The Trost", url: "https://thetrost.com" },
   { name: "MediCann", url: "https://medicann.co.in" },
@@ -40,7 +40,7 @@ export default function Home() {
           <Wordmark />
           <div className="flex items-center gap-1">
             <Button variant="primary" size="sm" className="bg-resin text-noir hover:bg-resin-light" asChild>
-              <Link href="/app?intent=match">Find My Gummy</Link>
+              <Link href="/app?intent=browse">Find My Gummy</Link>
             </Button>
           </div>
         </nav>
@@ -256,7 +256,7 @@ export default function Home() {
         <div className="mx-auto max-w-5xl px-6 text-center">
           <p className="text-xs uppercase tracking-[0.25em] text-ink-muted">the menu, today</p>
           <h2 className="mt-4 font-display text-3xl font-medium text-ink">
-            13 brands. Every Indian Vijaya edible worth knowing.
+            12 brands. Every Indian Vijaya edible worth knowing.
           </h2>
           <p className="mx-auto mt-4 max-w-xl text-ink-soft">
             Curated, not scraped. Each verified for cannabinoid profile, lab status, and legality before it hits the menu.

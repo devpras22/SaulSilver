@@ -17,6 +17,8 @@ import {
   Upload,
   RefreshCw,
   Loader2,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import type {
   Brand,
@@ -72,6 +74,8 @@ export default function AppChat({
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const catalogLoadedRef = useRef(false);
+  const brandsLoadedRef = useRef(false);
   const [addressModalOpen, setAddressModalOpen] = useState(false);
   const [savedCardId, setSavedCardId] = useState<string | null>(null);
 
@@ -120,7 +124,14 @@ export default function AppChat({
         timestamp: new Date().toISOString(),
       },
     ]);
-    if (intent === "browse") loadCatalog();
+    if (intent === "browse" && !catalogLoadedRef.current) {
+      catalogLoadedRef.current = true;
+      loadCatalog();
+    }
+    if (intent === "verify" && !brandsLoadedRef.current) {
+      brandsLoadedRef.current = true;
+      loadBrands();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [intent, searchParams]);
 
@@ -134,17 +145,22 @@ export default function AppChat({
 
   const pushAssistant = useCallback(
     (content: string, kind: ChatMessage["kind"] = "text", data?: unknown) => {
-      setMessages((m) => [
-        ...m,
-        {
-          id: `msg_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
-          role: "assistant",
-          content,
-          kind,
-          data,
-          timestamp: new Date().toISOString(),
-        },
-      ]);
+      setMessages((m) => {
+        if (kind === "catalog" && m.some((msg) => msg.kind === "catalog")) {
+          return m;
+        }
+        return [
+          ...m,
+          {
+            id: `msg_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+            role: "assistant",
+            content,
+            kind,
+            data,
+            timestamp: new Date().toISOString(),
+          },
+        ];
+      });
     },
     []
   );
@@ -358,7 +374,7 @@ export default function AppChat({
       const res = await fetch("/api/catalog");
       const data = await res.json();
       if (data.products?.length) {
-        pushAssistant("", "recommendation", {
+        pushAssistant("", "catalog", {
           matches: data.products.map((p: CannabisProduct) => ({
             product: p,
             brand: data.brands.find((b: Brand) => b.id === p.brand_id),
@@ -366,8 +382,20 @@ export default function AppChat({
             reasons: [`${p.pack_count} gummies`, formatINR(p.price_inr)],
           })),
           profile: { intent: "browse", region: "IN" },
-          browse: true,
         });
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  // ── Load brands for verify ──
+  const loadBrands = async () => {
+    try {
+      const res = await fetch("/api/catalog");
+      const data = await res.json();
+      if (data.brands?.length) {
+        pushAssistant("Or just tap one of the 12 brands we actively track below:", "brand_pills", { brands: data.brands });
       }
     } catch {
       // ignore
@@ -616,10 +644,19 @@ export default function AppChat({
 
   return (
     <div className="flex h-[calc(100vh-57px)] flex-col overflow-hidden">
-      <div ref={scrollRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
-        {messages.map((m) => (
-          <MessageBubble key={m.id} message={m} onPay={runPayment} />
-        ))}
+      <div ref={scrollRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1 pb-10">
+        {(() => {
+          const latestDashboardId = [...messages].reverse().find(m => m.kind === "dashboard")?.id;
+          return messages.map((m) => (
+            <MessageBubble 
+              key={m.id} 
+              message={m} 
+              onPay={runPayment} 
+              onVerify={verifyBrand} 
+              isLatestDashboard={m.id === latestDashboardId} 
+            />
+          ));
+        })()}
 
         {(() => {
           const lastMsg = messages[messages.length - 1];
@@ -796,9 +833,13 @@ function ThinkingIndicator() {
 function MessageBubble({
   message,
   onPay,
+  onVerify,
+  isLatestDashboard = true,
 }: {
   message: ChatMessage;
   onPay: (product: CannabisProduct, brand: Brand) => void;
+  onVerify: (brandName: string) => void;
+  isLatestDashboard?: boolean;
 }) {
   if (message.role === "user") {
     return (
@@ -815,13 +856,51 @@ function MessageBubble({
     return <RecommendationList matches={matches} onPay={onPay} />;
   }
 
+  if (message.kind === "catalog" && message.data) {
+    const { matches } = message.data as { matches: ProductMatch[] };
+    return <CatalogList matches={matches} onPay={onPay} />;
+  }
+
+  if (message.kind === "brand_pills" && message.data) {
+    const { brands } = message.data as { brands: Brand[] };
+    return (
+      <div className="flex items-start gap-3 animate-fade-in-up mt-2">
+        <Avatar />
+        <div>
+          <div className="max-w-[80%] whitespace-pre-line rounded-2xl rounded-tl-sm bg-noir-card px-4 py-2.5 text-sm text-ink shadow-sm mb-3">
+            {message.content}
+          </div>
+          <div className="flex flex-wrap gap-2 max-w-[85%]">
+            {brands.map((b) => (
+              <button
+                key={b.id}
+                onClick={() => onVerify(b.name)}
+                className="rounded-full border border-white/10 bg-black/40 backdrop-blur-md px-3 py-1.5 text-xs text-white/80 transition-colors hover:border-resin/50 hover:text-white"
+              >
+                {b.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (message.kind === "dashboard" && message.data) {
     const { brand, products, research } = message.data as {
       brand: Brand;
       products: CannabisProduct[];
       research: { verdict: string; findings: { summary: string; red_flags?: string[]; license?: string }; sources: string[] };
     };
-    return <BrandReport brand={brand} products={products} research={research} />;
+    return (
+      <BrandReport 
+        brand={brand} 
+        products={products} 
+        research={research} 
+        onPay={(product, brand) => handlePayClick(product, brand)} 
+        isLatestDashboard={isLatestDashboard}
+      />
+    );
   }
 
   if (message.kind === "confirmation" && message.data) {
@@ -865,6 +944,122 @@ function MessageBubble({
   );
 }
 
+function CatalogList({
+  matches,
+  onPay,
+}: {
+  matches: ProductMatch[];
+  onPay: (product: CannabisProduct, brand: Brand) => void;
+}) {
+  const vibeGroups = [
+    { id: "sleep", label: "Deep Sleep & Insomnia", icon: "🌙", tags: ["sleep"] },
+    { id: "pain", label: "Pain Relief & Body", icon: "🩹", tags: ["pain"] },
+    { id: "anxiety", label: "Anxiety & Calm", icon: "🧘‍♂️", tags: ["anxiety", "relax"] },
+    { id: "focus", label: "Focus & Social", icon: "⚡️", tags: ["focus", "social", "energy", "mood", "euphoria"] }
+  ];
+
+  const grouped = vibeGroups.map(vibe => ({
+    ...vibe,
+    products: matches.filter(m => m.product.effect_tags?.some(tag => vibe.tags.includes(tag)))
+  })).filter(vibe => vibe.products.length > 0);
+
+  const [openSection, setOpenSection] = useState<string | null>(grouped[0]?.id || null);
+
+  return (
+    <div className="space-y-4 py-2 animate-fade-in-up">
+      {grouped.map(vibe => {
+        const isOpen = openSection === vibe.id;
+        return (
+          <div key={vibe.id} className="w-full overflow-hidden rounded-lg border border-border bg-noir-card">
+            <button 
+              onClick={() => setOpenSection(isOpen ? null : vibe.id)}
+              className="flex w-full items-center justify-between p-4 transition-colors hover:bg-resin/5"
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-xl">{vibe.icon}</span>
+                <h3 className="font-medium text-ink">{vibe.label}</h3>
+                <Badge variant="outline" className="ml-2 text-[10px] text-ink-muted">
+                  {vibe.products.length}
+                </Badge>
+              </div>
+              {isOpen ? <ChevronUp className="h-4 w-4 text-ink-muted" /> : <ChevronDown className="h-4 w-4 text-ink-muted" />}
+            </button>
+            
+            {isOpen && (
+              <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-4 pt-1 pl-4 pr-6 scrollbar-hide border-t border-border/30">
+                {vibe.products.map(m => (
+                  <MenuProductCard key={m.product.id} match={m} onPay={onPay} />
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function MenuProductCard({ match, onPay }: { match: ProductMatch; onPay: (p: CannabisProduct, b: Brand) => void }) {
+  const [expanded, setExpanded] = useState(false);
+  const { product, brand } = match;
+
+  if (expanded) {
+    return (
+      <div className="w-80 shrink-0 snap-start">
+        <ProductCard match={match} rank={-1} onPay={onPay} onClose={() => setExpanded(false)} />
+      </div>
+    );
+  }
+
+  const cleanName = product.name
+    .replace(new RegExp(`\\b${product.ratio || ""}\\b`, "gi"), "")
+    .replace(/\b\d+mg\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/,\s*$/, "");
+
+  return (
+    <Card 
+      onClick={() => setExpanded(true)}
+      className="w-56 shrink-0 snap-start cursor-pointer overflow-hidden border-white/10 bg-black/40 backdrop-blur-md transition-all hover:border-resin/40 hover:shadow-[0_0_15px_rgba(202,255,10,0.15)] group"
+    >
+      <div className="h-28 w-full bg-gradient-to-b from-resin/5 to-black/60 relative overflow-hidden border-b border-white/10">
+        <div className="absolute inset-0 flex items-center justify-center">
+          <img 
+            src={`/products/${brand.id}/${product.name.replace(/[^a-z0-9]/gi, '-').toLowerCase()}.jpg`}
+            alt={product.name}
+            className="h-full w-full object-cover opacity-50 mix-blend-screen transition-all duration-700 group-hover:scale-110 group-hover:opacity-70"
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+              e.currentTarget.parentElement?.classList.add('opacity-10');
+              // fallback to Leaf icon
+              e.currentTarget.parentElement!.innerHTML = '<svg class="w-12 h-12 text-resin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>';
+            }}
+          />
+        </div>
+        <div className="absolute top-2 left-2">
+          <span className="rounded bg-black/60 backdrop-blur-md px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-white/80 border border-white/10">
+            {brand.name}
+          </span>
+        </div>
+      </div>
+      <CardContent className="p-3 flex flex-col justify-between h-[100px]">
+        <div>
+          <h4 className="mb-2 text-sm font-semibold text-white line-clamp-1 drop-shadow-sm" title={product.name}>{cleanName}</h4>
+          <div className="flex flex-wrap gap-1 text-[10px] text-white/70">
+            {product.ratio && <span className="rounded-sm bg-white/10 px-1.5 py-0.5 border border-white/5">{product.ratio}</span>}
+            {product.cannabinoids?.total_extract_mg && <span className="rounded-sm bg-white/10 px-1.5 py-0.5 border border-white/5">{product.cannabinoids.total_extract_mg}mg</span>}
+          </div>
+        </div>
+        <div className="flex items-center justify-between mt-auto">
+          <span className="text-sm font-semibold text-resin drop-shadow-sm">{formatINR(product.price_inr)}</span>
+          <span className="text-[10px] text-white/40 group-hover:text-resin/80 transition-colors">View details →</span>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function RecommendationList({
   matches,
   onPay,
@@ -893,121 +1088,139 @@ function ProductCard({
   match,
   rank,
   onPay,
+  onClose,
 }: {
   match: ProductMatch;
   rank: number;
   onPay: (product: CannabisProduct, brand: Brand) => void;
+  onClose?: () => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [tab, setTab] = useState<"overview" | "medical" | "safety">("overview");
   const { product, brand, reasons, warnings } = match;
   const perGummy = Math.round(product.price_inr / product.pack_count);
 
   return (
-    <Card className={`mb-3 ${rank === 0 ? "border-resin/40 glow-resin" : "border-border"} bg-noir-card`}>
+    <Card className={`mb-3 overflow-hidden border ${rank === 0 ? "border-resin/40 glow-resin" : "border-white/10"} bg-black/40 backdrop-blur-xl relative transition-all`}>
       {rank === 0 && (
-        <div className="flex items-center justify-between bg-resin/10 px-4 py-2">
-          <span className="text-xs font-medium uppercase tracking-wide text-resin">Top match</span>
-          <Badge variant="resin">Best fit</Badge>
-        </div>
+        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-resin to-resin-light/50"></div>
       )}
-      <CardContent className="pt-4">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="font-display text-lg font-semibold text-ink">{product.name}</p>
-            <p className="text-sm text-ink-muted">{brand.name}</p>
-          </div>
-          <div className="text-right">
-            <p className="font-display text-xl font-semibold text-resin">{formatINR(product.price_inr)}</p>
-            <p className="text-xs text-ink-muted">{formatINR(perGummy)}/gummy</p>
-          </div>
+      <CardContent className="p-0">
+        <div 
+          className={`h-44 w-full bg-gradient-to-b from-resin/10 to-black/80 flex flex-col justify-end p-4 relative overflow-hidden ${onClose ? 'cursor-pointer hover:from-resin/20 transition-all' : ''}`}
+          onClick={onClose}
+        >
+           {/* Product Image */}
+           <div className="absolute inset-0 flex items-center justify-center">
+              <img 
+                src={`/products/${brand.id}/${product.name.replace(/[^a-z0-9]/gi, '-').toLowerCase()}.jpg`}
+                alt={product.name}
+                className="h-full w-full object-cover opacity-60 mix-blend-screen transition-opacity duration-500"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                  e.currentTarget.parentElement?.classList.add('opacity-10');
+                  const Icon = require('lucide-react').Leaf;
+                  // If image fails, fallback to Leaf icon
+                  e.currentTarget.parentElement!.innerHTML = '<svg class="w-24 h-24 text-resin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>';
+                }}
+              />
+           </div>
+           
+           <div className="relative z-10 flex items-end justify-between">
+             <div className="pr-2">
+               <div className="flex items-center gap-2">
+                 {onClose && <span className="text-white/50 mb-1">←</span>}
+                 <p className="font-display text-lg font-semibold text-white drop-shadow-md leading-tight">{product.name}</p>
+               </div>
+               <p className="text-[10px] font-medium text-white/70 uppercase tracking-widest mt-1">{brand.name}</p>
+             </div>
+             <div className="text-right shrink-0">
+               <p className="font-display text-xl font-semibold text-resin drop-shadow-md">{formatINR(product.price_inr)}</p>
+               <p className="text-[10px] text-white/50">{formatINR(perGummy)}/gummy</p>
+             </div>
+           </div>
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-2">
-          {reasons.map((r, i) => (
-            <Badge key={i} variant={rank === 0 ? "resin" : "default"}>{r}</Badge>
+        <div className="flex border-b border-white/10">
+          {(["overview", "medical", "safety"] as const).map(t => (
+            <button 
+              key={t}
+              onClick={() => setTab(t)}
+              className={`flex-1 py-2.5 text-[11px] font-medium uppercase tracking-wider transition-colors ${tab === t ? "text-resin border-b border-resin" : "text-white/50 hover:text-white/80"}`}
+            >
+              {t}
+            </button>
           ))}
         </div>
 
-        {warnings && warnings.length > 0 && (
-          <div className="mt-3 rounded-lg border border-ember/30 bg-ember/5 p-3">
-            {warnings.map((w, i) => (
-              <p key={i} className="flex items-start gap-2 text-xs text-ember">
-                <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                {w}
-              </p>
-            ))}
-          </div>
-        )}
+        <div className="p-4 h-[160px] overflow-y-auto scrollbar-hide text-white/80 text-xs">
+          {tab === "overview" && (
+            <div className="space-y-3 animate-fade-in-up">
+              <div className="flex flex-wrap gap-2">
+                {reasons.map((r, i) => (
+                  <Badge key={i} variant={rank === 0 ? "resin" : "outline"} className={rank !== 0 ? "border-white/20 text-white/80" : ""}>{r}</Badge>
+                ))}
+              </div>
+              {product.key_uses && (
+                <p className="text-white/90 leading-relaxed"><strong>Best for:</strong> {product.key_uses}</p>
+              )}
+            </div>
+          )}
 
-        <div className="mt-3 flex flex-wrap gap-4 text-sm text-ink-soft">
-          {product.cannabinoids.total_extract_mg && (
-            <span className="flex items-center gap-1.5">
-              <Beaker className="h-4 w-4 text-resin" />
-              {product.cannabinoids.total_extract_mg}mg/gummy
-            </span>
+          {tab === "medical" && (
+            <div className="space-y-4 animate-fade-in-up">
+              <div className="grid grid-cols-2 gap-3">
+                {product.cannabinoids.total_extract_mg && (
+                  <div className="flex items-center gap-1.5"><Beaker className="h-4 w-4 text-resin" /> {product.cannabinoids.total_extract_mg}mg/gummy</div>
+                )}
+                {product.ratio && (
+                  <div className="flex items-center gap-1.5"><FlaskConical className="h-4 w-4 text-resin" /> {product.ratio}</div>
+                )}
+                {product.onset_minutes && (
+                  <div className="flex items-center gap-1.5"><Clock className="h-4 w-4 text-resin" /> ~{product.onset_minutes}m onset</div>
+                )}
+                {product.duration_hours && (
+                  <div className="flex items-center gap-1.5"><Clock className="h-4 w-4 text-resin" /> {product.duration_hours}h duration</div>
+                )}
+              </div>
+              {product.composition && Object.keys(product.composition).length > 0 && (
+                <div className="pt-3 border-t border-white/10">
+                  <p className="mb-2 text-[10px] uppercase tracking-wider text-white/50">Composition</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {Object.entries(product.composition).map(([k, v]) => (
+                      <span key={k} className="rounded-md bg-white/10 px-2 py-1 leading-none">{k} <span className="text-white/50">{v}</span></span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           )}
-          {product.ratio && (
-            <span className="flex items-center gap-1.5">
-              <FlaskConical className="h-4 w-4 text-resin" />
-              {product.ratio}
-            </span>
-          )}
-          {product.onset_minutes && (
-            <span className="flex items-center gap-1.5">
-              <Clock className="h-4 w-4 text-resin" />
-              ~{product.onset_minutes}min onset
-            </span>
-          )}
-          {product.duration_hours && (
-            <span className="flex items-center gap-1.5">
-              <Clock className="h-4 w-4 text-resin" />
-              {product.duration_hours}h
-            </span>
+
+          {tab === "safety" && (
+            <div className="space-y-2.5 animate-fade-in-up">
+              {warnings && warnings.length > 0 ? warnings.map((w, i) => (
+                <p key={i} className="flex items-start gap-2 text-ember/90">
+                  <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  {w}
+                </p>
+              )) : (
+                <p className="text-white/50">Standard cannabis precautions apply.</p>
+              )}
+              {brand.verified && (
+                <div className="mt-4 flex items-center gap-2 rounded-lg bg-leaf/10 p-2 text-leaf border border-leaf/20">
+                  <CheckCircle2 className="h-4 w-4 shrink-0" />
+                  <span>Verified AYUSH license & lab tested.</span>
+                </div>
+              )}
+            </div>
           )}
         </div>
 
-        {product.key_uses && (
-          <button onClick={() => setExpanded(!expanded)} className="mt-3 text-xs text-resin hover:text-resin-light">
-            {expanded ? "Hide details" : "Key uses, composition, warnings →"}
-          </button>
-        )}
-        {expanded && (
-          <div className="mt-3 space-y-3 rounded-lg border border-border bg-noir-soft p-3 text-xs">
-            {product.key_uses && (
-              <div>
-                <p className="mb-1 font-medium text-ink">Key uses</p>
-                <p className="text-ink-soft">{product.key_uses}</p>
-              </div>
-            )}
-            {product.composition && Object.keys(product.composition).length > 0 && (
-              <div>
-                <p className="mb-1 font-medium text-ink">Composition</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {Object.entries(product.composition).map(([k, v]) => (
-                    <span key={k} className="rounded bg-noir-raised px-2 py-0.5 text-ink-muted">{k} {v}</span>
-                  ))}
-                </div>
-              </div>
-            )}
-            {product.warnings && product.warnings.length > 0 && (
-              <div>
-                <p className="mb-1 font-medium text-ink">Warnings</p>
-                <ul className="space-y-0.5 text-ink-muted">
-                  {product.warnings.map((w, i) => (<li key={i}>• {w}</li>))}
-                </ul>
-              </div>
-            )}
-          </div>
-        )}
-
-        {brand.instagram_followers && brand.instagram_followers > 0 && (
-          <p className="mt-3 text-xs text-ink-muted">{brand.instagram_handle} · {formatFollowers(brand.instagram_followers)}</p>
-        )}
-
-        <Button className="mt-4 w-full" size="sm" onClick={() => onPay(product, brand)}>
-          <Shield className="h-4 w-4" />
-          {brand.prescription_required ? "Order — doctor prescription included" : `Order — ${formatINR(product.price_inr)}`}
-        </Button>
+        <div className="p-4 pt-0">
+           <Button className="w-full bg-resin text-noir hover:bg-resin-light shadow-[0_0_15px_rgba(202,255,10,0.3)] transition-all active:scale-95 border-none" size="sm" onClick={() => onPay(product, brand)}>
+            <Shield className="h-4 w-4 mr-2" />
+            {brand.prescription_required ? "Order (Doc Consult Included)" : `Order — ${formatINR(product.price_inr)}`}
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );
@@ -1017,53 +1230,81 @@ function BrandReport({
   brand,
   products,
   research,
+  onPay,
+  isLatestDashboard = true,
 }: {
   brand: Brand;
   products: CannabisProduct[];
   research: { verdict: string; findings: { summary: string; red_flags?: string[]; license?: string }; sources: string[] };
+  onPay: (product: CannabisProduct, brand: Brand) => void;
+  isLatestDashboard?: boolean;
 }) {
+  const [expanded, setExpanded] = useState(isLatestDashboard);
+  
+  useEffect(() => {
+    setExpanded(isLatestDashboard);
+  }, [isLatestDashboard]);
+
   const verdictColor = research.verdict === "verified" ? "leaf" : research.verdict === "caution" ? "gold" : "ember";
   return (
     <div className="flex items-start gap-3 animate-fade-in-up">
       <Avatar />
       <div className="w-full max-w-[88%]">
-        <Card className="bg-noir-card">
-          <div className="flex items-center justify-between bg-noir-raised px-5 py-3">
-            <span className="font-display text-lg font-semibold text-ink">{brand.name}</span>
+        <Card className="bg-noir-card transition-all">
+          <div 
+            className="flex items-center justify-between bg-noir-raised px-5 py-3 cursor-pointer select-none hover:bg-noir-raised/80 transition-colors"
+            onClick={() => setExpanded(!expanded)}
+          >
+            <div className="flex items-center gap-2">
+              <span className="font-display text-lg font-semibold text-ink">{brand.name}</span>
+              {!expanded && <span className="text-xs text-ink-muted">(Tap to expand)</span>}
+            </div>
             <Badge variant={verdictColor}>{research.verdict}</Badge>
           </div>
-          <CardContent className="pt-4">
-            {brand.tagline && <p className="mb-3 text-sm italic text-ink-soft">{brand.tagline}</p>}
-            <p className="text-sm text-ink">{research.findings.summary}</p>
-            {research.findings.license && (
-              <div className="mt-3 flex items-start gap-2 rounded-lg border border-leaf/20 bg-leaf/5 p-3 text-xs">
-                <Shield className="mt-0.5 h-4 w-4 shrink-0 text-leaf-light" />
-                <span className="text-ink-soft">{research.findings.license}</span>
-              </div>
-            )}
-            {research.findings.red_flags && research.findings.red_flags.length > 0 && (
-              <div className="mt-3">
-                <p className="mb-1.5 text-xs font-medium text-ember">Red flags</p>
-                <ul className="space-y-0.5 text-xs text-ink-muted">
-                  {research.findings.red_flags.map((r, i) => (<li key={i}>• {r}</li>))}
-                </ul>
-              </div>
-            )}
-            {products.length > 0 && (
-              <div className="mt-4 border-t border-border pt-3">
-                <p className="mb-2 text-xs text-ink-muted">{products.length} product{products.length > 1 ? "s" : ""} on the menu</p>
-                {products.map((p, i) => (
-                  <div key={i} className="flex justify-between py-1 text-sm">
-                    <span className="text-ink-soft">{p.name}</span>
-                    <span className="text-ink-muted">{formatINR(p.price_inr)}</span>
+          
+          {expanded && (
+            <CardContent className="pt-4 animate-fade-in-up">
+              {brand.tagline && <p className="mb-3 text-sm italic text-ink-soft">{brand.tagline}</p>}
+              <p className="text-sm text-ink">{research.findings.summary}</p>
+              {research.findings.license && (
+                <div className="mt-3 flex items-start gap-2 rounded-lg border border-leaf/20 bg-leaf/5 p-3 text-xs">
+                  <Shield className="mt-0.5 h-4 w-4 shrink-0 text-leaf-light" />
+                  <span className="text-ink-soft">{research.findings.license}</span>
+                </div>
+              )}
+              {research.findings.red_flags && research.findings.red_flags.length > 0 && (
+                <div className="mt-3">
+                  <p className="mb-1.5 text-xs font-medium text-ember">Red flags</p>
+                  <ul className="space-y-0.5 text-xs text-ink-muted">
+                    {research.findings.red_flags.map((r, i) => (<li key={i}>• {r}</li>))}
+                  </ul>
+                </div>
+              )}
+              {products.length > 0 && (
+                <div className="mt-4 border-t border-white/10 pt-4">
+                  <p className="mb-3 text-xs uppercase tracking-wider text-white/50">{products.length} product{products.length > 1 ? "s" : ""} from {brand.name}</p>
+                  <div className="flex w-full snap-x snap-mandatory gap-3 overflow-x-auto pb-4 scrollbar-hide">
+                    {products.map((p, i) => (
+                      <MenuProductCard key={i} match={{ product: p, brand, score: 1, reasons: [], warnings: [] }} onPay={onPay} />
+                    ))}
                   </div>
-                ))}
-              </div>
-            )}
-            {brand.instagram_followers && brand.instagram_followers > 0 && (
-              <p className="mt-3 text-xs text-ink-muted">{brand.instagram_handle} · {formatFollowers(brand.instagram_followers)}</p>
-            )}
-          </CardContent>
+                </div>
+              )}
+              {brand.instagram_followers && brand.instagram_followers > 0 && (
+                <p className="mt-3 text-xs text-ink-muted">
+                  <a 
+                    href={`https://instagram.com/${brand.instagram_handle?.replace('@', '')}`} 
+                    target="_blank" 
+                    rel="noreferrer" 
+                    className="hover:text-resin transition-colors underline underline-offset-2"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {brand.instagram_handle}
+                  </a> · {formatFollowers(brand.instagram_followers)}
+                </p>
+              )}
+            </CardContent>
+          )}
         </Card>
       </div>
     </div>

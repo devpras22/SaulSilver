@@ -150,16 +150,51 @@ Be honest about red flags. A brand with no COA is still `verified` if it has an 
 
 ### 6. Derive the `trust_score` (0–1)
 
-There's no formula in code — you set it based on the research. The benchmarks in `research.ts`:
+**Use the rubric below — do not score by feel.** The benchmark bands in `research.ts`
+still describe what a score *means*, but the number itself now comes from the rubric
+so every brand is scored on the same checkable criteria and the scores are defensible
+to a judge (and re-derivable by anyone reading the row):
 
 | Score range | Meaning |
 |---|---|
 | 0.9+ | Clearly legit, with public lab tests (COA) |
-| 0.6–0.9 | Probably legit but gaps (no COA, etc.) — Moon Impact sits here (0.72) |
+| 0.6–0.9 | Probably legit but gaps (no COA, etc.) |
 | 0.3–0.6 | Proceed with caution |
 | <0.3 | Avoid |
 
-Heuristics that push the score up: AYUSH licence visible, public COA, real prescription flow, verifiable Instagram with real followers, independent reviews. Heuristics that pull it down: no licence, no COA, sketchy payment methods, unverifiable claims.
+#### The rubric (start at 1.0, deduct)
+
+| Criterion | Dock if missing/weak | Notes |
+|---|---|---|
+| AYUSH licence **number** visible as text | **−0.10** | A claim ("fully licensed") without the number is weaker than Trost's `A-4906/2021`. A licence number baked into an image (not text) counts as missing — it can't be independently checked. |
+| Public Certificate of Analysis (COA) / lab test | **−0.08** | Neutral disclosure gap in the Indian Vijaya market (most brands don't publish). Dock uniformly, but it's not a disqualifier. |
+| THC/CBD mg **or** ratio disclosed | **−0.06** | Qurist publishes both (20mg+20mg, 1:1) → no dock. Trost publishes neither → full dock. Partial disclosure (ratio but not mg, or mg but not ratio) → −0.03. |
+| Verifiable Instagram with real followers | **−0.04** | Need an actual follower count. If IG blocks scraping and the count can't be obtained → dock (set `instagram_followers: null` and dock). |
+| Real prescription / doctor-consultation flow | **−0.05** | In-house doctor, upload-prescription checkout, or free consultation with every order. |
+| Independent reviews (volume + recency) | up to **−0.05** | 100+ recent dated reviews → no dock. A few dozen → −0.02. <10 or none → −0.05. |
+| Adverse-event / recurring QC reports | up to **−0.08** | Per the brand_research `red_flags`. e.g. Trost's batch-potency inconsistency + an ER report → −0.06. Clean → no dock. |
+
+**Floor of 0.0, ceiling of 1.0.** Record the deduction breakdown in
+`brand_research.findings.trust_breakdown` so the score is auditable:
+
+```json
+"trust_breakdown": {
+  "start": 1.0,
+  "deductions": {
+    "licence_number_missing": -0.10,
+    "no_coa": -0.08,
+    "mg_ratio_partial": -0.03
+  },
+  "final": 0.79
+}
+```
+
+If two brands land on the same score after the rubric, that's fine — the rubric is
+the truth, not head-to-head ranking. Don't nudge to break ties.
+
+> **History:** earlier seeds (Moon Impact, Trost, Qurist) were scored by feel and
+> re-scored to this rubric on 2026-08-02. If you find a brand whose score doesn't
+> match the rubric, re-run the rubric and update it — the rubric wins.
 
 > **Trust_score now feeds a live Senso blend.** When the sommelier matches, this
 > static Supabase score is blended 50/50 with a grounded Senso signal queried at

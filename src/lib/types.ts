@@ -97,6 +97,8 @@ export interface ChatMessage {
     | "text"
     | "thinking"
     | "recommendation"
+    | "catalog"
+    | "brand_pills"
     | "status"
     | "payment"
     | "confirmation"
@@ -126,16 +128,11 @@ export type Effect =
   | "creativity";
 
 export const EFFECTS: { value: Effect; label: string; blurb: string }[] = [
-  { value: "sleep", label: "Sleep", blurb: "Knock out. Stay out." },
-  { value: "anxiety", label: "Calm anxiety", blurb: "Quiet the noise." },
-  { value: "pain", label: "Pain relief", blurb: "Body settles." },
-  { value: "focus", label: "Focus", blurb: "Lock in." },
-  { value: "euphoria", label: "Euphoria", blurb: "Good vibes only." },
-  { value: "social", label: "Social", blurb: "Talkative, loose." },
-  { value: "relax", label: "Relax", blurb: "Decompress." },
-  { value: "couch_lock", label: "Couch-lock", blurb: "Nowhere to be." },
-  { value: "munchies", label: "Munchies", blurb: "Snack ready." },
-  { value: "creativity", label: "Creativity", blurb: "Ideas flow." },
+  { value: "sleep", label: "Deep Sleep", blurb: "Knock out. Stay out." },
+  { value: "anxiety", label: "Stress & Anxiety", blurb: "Quiet the noise." },
+  { value: "pain", label: "Pain Relief", blurb: "Body settles." },
+  { value: "focus", label: "Focus & Creativity", blurb: "Lock in. Ideas flow." },
+  { value: "social", label: "Social & Uplift", blurb: "Talkative, good vibes." },
 ];
 
 export type Tolerance = "first_time" | "occasional" | "seasoned";

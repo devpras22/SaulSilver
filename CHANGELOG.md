@@ -8,6 +8,8 @@
 - **Moon Impact live in Senso:** `scripts/seed-senso-moon-impact.ts` ingests the trust doc and verifies the full ingest→wait→query loop end-to-end through the new `senso.ts` exports.
 - **Runbook updated:** `docs/BRAND-SEEDING-RUNBOOK.md` documents the full Senso lifecycle (Ingest → Wait → Query → Blend), the `support_email` requirement, and the live-path completeness bar.
 - **Back-compat:** `getPharmacyTrustContext` callers (`pharmacy-data.ts`, `discover/route.ts`) aliased to `getBrandTrustScore` so legacy paths still compile.
+- **Brand Image Pipeline:** Manually ingested and mapped product images for Polyherbs, Medicann, and Hebe Wellness. Corrected slugification matching in filenames (e.g. `---`) to perfectly map frontend requests to `public/products/` images.
+- **Database Sync:** Discovered missing "Chill Golden" (250mg) product for Polyherbs, added it to the local seed script, and pushed the update directly to the live Supabase database.
 
 ## 2026-08-02
 - **Critical Fix — Card Rendering Regression:** Removed an early `return` in `MessageBubble` (introduced by the UI overhaul) that was rendering *every* assistant message as a plain text bubble. Restored the Location Verified card, PriorityPicker, Prava payment iframe (PaymentCard), ConfirmationCard, RecommendationCard, and AgentDashboard.
