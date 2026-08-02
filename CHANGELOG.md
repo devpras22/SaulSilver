@@ -1,5 +1,9 @@
 # Changelog
 
+## 2026-08-02 (Startup pitch — Localhost track)
+- **"Not a chatbot. A colleague." section on the landing page:** New high-placed section right after the hero reframing Saul from "cannabis app" to "the proof the pattern works." Six capability cards (expert, searches live, verifies, buys for you, has an inbox, scales) + CTA to the full pitch. Targets Localhost's "distribution potential" + "problem clarity" judging bars.
+- **`/pitch` page — the startup case:** Long-form founder-pitch page (Jack Butcher voice: short, declarative, bold contrasts). Walks problem → shift → proof (Saul today) → the abstracted loop (wallet + mailbox + browser + expertise) → the company (spawn any category expert) → why now (Prava/Stagehand/AgentMail/Senso rails exist) → the ask. Separate page keeps the consumer landing page fast while giving judges the full vision.
+
 ## 2026-08-02 (Prava Step-5 checkout + agent email + freshness)
 - **Linq Agentcard Checkout (iMessage App):** Rewrote the SMS/iMessage checkout flow in the webhook to trigger a native Linq Agentcard via the `imessage_app` payload type instead of sending an external Safari link. Users can now securely check out with Prava entirely within the iMessage bubble. Added `imessage_app` typing support in `src/lib/linq.ts`.
 - **Conversational Memory for SMS:** Enhanced `ConvoState` in the Linq webhook to store `pendingRecommendations` instead of deleting the conversation. This allows the user to naturally text back "1", "2", or "3" and trigger the exact Prava Agentcard payment for the selected product without losing context.

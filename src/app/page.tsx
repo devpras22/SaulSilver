@@ -13,6 +13,12 @@ import {
   Beaker,
   Flame,
   Search,
+  Brain,
+  Mail,
+  Globe,
+  CreditCard,
+  Network,
+  TrendingUp,
 } from "lucide-react";
 
 const BRANDS: { name: string; url: string }[] = [
@@ -115,6 +121,44 @@ export default function Home() {
 
       {/* The reframe — the core thesis */}
       <section className="border-y border-border bg-noir/30 backdrop-blur-3xl py-28">
+        {/* === WHY OUR AGENT IS DOPE — the startup thesis === */}
+        <div className="mx-auto max-w-5xl px-6">
+          <div className="mb-12 text-center">
+            <p className="text-sm font-medium uppercase tracking-[0.2em] text-resin">not a chatbot. a colleague.</p>
+            <h2 className="mt-4 font-display text-4xl font-medium leading-tight text-ink sm:text-5xl">
+              You have a friend for everything.
+              <br />
+              <span className="italic text-resin">Saul is that friend. For sale.</span>
+            </h2>
+            <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-ink-soft">
+              The gamer who knows which chair. The fashion kid who knows which jacket. The techie who knows which phone.
+              <br />
+              Saul is the cannabis one. And the proof the pattern works.
+            </p>
+          </div>
+
+          {/* Capability grid — what makes the agent an agent */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <Capability icon={<Brain className="h-5 w-5" />} title="It's an expert" body="Sommelier-grade matching, not cheapest-result. It knows the dose, the ratio, the strain." />
+            <Capability icon={<Search className="h-5 w-5" />} title="It searches live" body="Crawls the real web. Finds the brand. Pulls the page. Not a stale catalog." />
+            <Capability icon={<Shield className="h-5 w-5" />} title="It verifies" body="Senso trust signal, lab tests, licenses — before it ever recommends." />
+            <Capability icon={<CreditCard className="h-5 w-5" />} title="It buys for you" body="A real browser fills the real checkout. Card details never touch the agent." />
+            <Capability icon={<Mail className="h-5 w-5" />} title="It has an inbox" body="Owns the order confirmation. Owns the tracking. Comes back to you." />
+            <Capability icon={<Network className="h-5 w-5" />} title="It scales" body="Same harness. New vertical. A fashion expert. A tech expert. Any category." />
+          </div>
+
+          <div className="mt-12 text-center">
+            <Button size="lg" variant="secondary" className="bg-noir/40 backdrop-blur-md border border-white/10 hover:bg-white/10 text-ink shadow-lg transition-all" asChild>
+              <Link href="/pitch">
+                See the vision <ArrowRight className="ml-1.5 h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
+        </div>
+      </section>
+
+      {/* The core thesis split */}
+      <section className="bg-noir/30 backdrop-blur-3xl py-28">
         <div className="mx-auto max-w-5xl px-6">
           <div className="grid gap-px overflow-hidden rounded-2xl border border-border bg-border md:grid-cols-2">
             <ReframeCell
@@ -392,6 +436,18 @@ export default function Home() {
 // ─────────────────────────────────────────────────────────────────────────────
 // Sub-components
 // ─────────────────────────────────────────────────────────────────────────────
+
+function Capability({ icon, title, body }: { icon: React.ReactNode; title: string; body: string }) {
+  return (
+    <div className="group rounded-xl border border-border/60 bg-noir/50 backdrop-blur-2xl p-6 transition-all hover:border-resin/40 hover:bg-resin/5">
+      <div className="mb-4 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-resin/10 text-resin transition-transform group-hover:scale-110">
+        {icon}
+      </div>
+      <h3 className="mb-1.5 font-display text-lg font-medium text-ink">{title}</h3>
+      <p className="text-sm leading-relaxed text-ink-soft">{body}</p>
+    </div>
+  );
+}
 
 function ReframeCell({
   label,
