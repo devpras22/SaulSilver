@@ -17,7 +17,10 @@ import {
  * iMessage sessions, polls Prava's payment-result, reports the outcome, and
  * texts the user a receipt.
  *
- * Runs every 2 minutes via vercel.json cron.
+ * Triggered every 2 minutes by a GitHub Actions workflow
+ * (`.github/workflows/imessage-cron.yml`). We don't use Vercel's native cron
+ * because Hobby caps it at once-per-day; a public repo gets free GH Actions
+ * minutes, so the workflow just pings this endpoint with the CRON_SECRET header.
  *
  * CRITICAL (per the 2026-08-03 lesson: "Reporting a one-time mandate charge as
  * APPROVED consumes the mandate"): we report the REAL outcome from
@@ -26,7 +29,7 @@ import {
  * APPROVED would falsely seal the mandate.
  *
  * Auth: `Authorization: Bearer ${CRON_SECRET}` so the endpoint isn't public.
- * Vercel cron sends this header automatically.
+ * The GH Action sends this header; without it the endpoint 401s.
  */
 
 export const dynamic = "force-dynamic";
