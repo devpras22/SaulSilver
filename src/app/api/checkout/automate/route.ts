@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     console.log(`[checkout/automate] Initializing Stagehand for ${merchantName}...`);
     const stagehand = new Stagehand({
       env: process.env.NODE_ENV === "production" ? "BROWSERBASE" : "LOCAL",
-      projectId: process.env.BROWSERBASE_PROJECT_ID || "dummy_bypass_123",
+      projectId: process.env.BROWSERBASE_PROJECT_ID || "82df0569-a0c5-4e73-bc35-6c132f5b665f",
       apiKey: process.env.BROWSERBASE_API_KEY,
       logger: (line) => console.log(`[stagehand] ${line.message}`)
     });
