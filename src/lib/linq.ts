@@ -21,17 +21,35 @@ const FROM = process.env.LINQ_FROM_NUMBER;
 
 export const LINQ_CONFIGURED = Boolean(API_KEY && FROM);
 
-interface MessagePart {
-  type: "text" | "media" | "link";
+export interface MessagePart {
+  type: "text" | "media" | "link" | "imessage_app";
   value?: string;
   url?: string;
   attachment_id?: string;
+  app?: {
+    name: string;
+    team_id: string;
+    bundle_id: string;
+    app_store_id?: number;
+  };
+  fallback_text?: string;
+  interactive?: boolean;
+  layout?: {
+    caption?: string;
+    subcaption?: string;
+    trailing_caption?: string;
+    trailing_subcaption?: string;
+    image_url?: string;
+    image_title?: string;
+    image_subtitle?: string;
+  };
 }
 
-interface SendOptions {
+export interface SendOptions {
   to: string;           // E.164, e.g. +13105551234
   text?: string;
   link?: string;        // URL for iMessage App attachment
+  parts?: MessagePart[]; // Array of message parts (overrides text/link if provided)
   /** Start a new chat vs reply in existing — Linq handles dedup */
   chatId?: string;
 }
@@ -53,25 +71,27 @@ async function linqFetch(path: string, body: unknown, method = "POST") {
   return data;
 }
 
-/** Send a text or link message. First outbound message to a number must not contain links. */
-export async function sendMessage({ to, text, link, chatId }: SendOptions) {
+/** Send a text, link, or multi-part message. */
+export async function sendMessage({ to, text, link, parts, chatId }: SendOptions) {
   if (!FROM) throw new Error("LINQ_FROM_NUMBER not set");
 
-  const parts: MessagePart[] = [];
-  if (text) parts.push({ type: "text", value: text });
-  if (link) parts.push({ type: "link", url: link });
+  const finalParts: MessagePart[] = parts ? [...parts] : [];
+  if (!parts) {
+    if (text) finalParts.push({ type: "text", value: text });
+    if (link) finalParts.push({ type: "link", url: link });
+  }
 
   // Use existing chat endpoint if we have a chatId, else create a new chat
   const path = chatId ? `/chats/${chatId}/messages` : "/chats";
   const payload = chatId
     ? {
         from: FROM,
-        message: { parts },
+        message: { parts: finalParts },
       }
     : {
         from: FROM,
         to: [to],
-        message: { parts },
+        message: { parts: finalParts },
       };
 
   return linqFetch(path, payload);

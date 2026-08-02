@@ -48,7 +48,36 @@ have clear buffer before the deadline.
 
 ---
 
-## 2. "Buy anything from any URL" generalization
+## 2. Saul personality — Giphy weed/420 reactions (for the marketing video)
+
+**Status:** Nice-to-have for personality + post-submission marketing (Twitter/demo
+video). Not core to the hackathon flow.
+
+**Idea:** Saul should be able to drop relevant GIFs into the conversation — stoner
+movie references, 420 culture, Pineapple Express vibes, Seth Rogen reactions, etc.
+It makes him feel alive and gives the demo video shareable personality moments.
+
+**Note — coordinate with Antigravity:** They are working on Giphy search via Linq
+(iMessage native). So this may already be in flight on the Linq/SMS side. Before
+building, check what Antigravity shipped so we don't duplicate. If they've got
+Giphy in the iMessage path, the web-chat equivalent is the gap to fill.
+
+**How to build (if needed for web chat):**
+1. Add a `sendGif` tool to `saul-agent.ts` — Saul calls it when a moment fits
+   (user gets a match → celebration GIF; user asks a stoner-culture question →
+   relevant reaction).
+2. Use the Giphy API (`api.giphy.com/v1/gifs/search`) — free tier, search by
+   keyword ("weed", "420", "pineapple express", "seth rogen laugh", etc.).
+3. Render the GIF inline in the chat as an assistant message (new `kind: "gif"`).
+4. Keep it tasteful and sparse — a GIF every 5-10 messages, not every reply,
+   or it gets annoying fast.
+
+**Value:** Demo video personality + Twitter shareability. Judges remember
+personality. But it's polish, not a winner on its own — ship the core flow first.
+
+---
+
+## 3. "Buy anything from any URL" generalization
 
 **Status:** Deferred — not for this hackathon.
 
