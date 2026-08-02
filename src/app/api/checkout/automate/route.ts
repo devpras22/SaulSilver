@@ -31,7 +31,9 @@ export async function POST(req: NextRequest) {
     // 2. Initialize Stagehand for the headless checkout
     console.log(`[checkout/automate] Initializing Stagehand for ${merchantName}...`);
     const stagehand = new Stagehand({
-      env: "LOCAL", // Use local Playwright instance
+      env: process.env.NODE_ENV === "production" ? "BROWSERBASE" : "LOCAL",
+      projectId: process.env.BROWSERBASE_PROJECT_ID,
+      apiKey: process.env.BROWSERBASE_API_KEY,
       logger: (line) => console.log(`[stagehand] ${line.message}`)
     });
     await stagehand.init();
