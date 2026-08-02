@@ -25,13 +25,15 @@ export default async function AppPage({
   const { data: { user } } = await supabase.auth.getUser();
 
   let savedAddress: string | null = null;
+  let savedPhone: string | null = null;
   if (user) {
     const addresses = (user.user_metadata?.addresses as any[]) ?? [];
     const activeAddressId = (user.user_metadata?.active_address_id as string) ?? null;
     const activeAddressObj = addresses.find(a => a.id === activeAddressId) || addresses[0] || null;
     savedAddress = activeAddressObj?.address ?? null;
+    savedPhone = (user.user_metadata?.phone as string) ?? (user.phone as string) ?? null;
   }
 
-  return <AppChat key={chatKey} savedAddress={savedAddress} userEmail={user?.email ?? null} intent={intent} />;
+  return <AppChat key={chatKey} savedAddress={savedAddress} userEmail={user?.email ?? null} userPhone={savedPhone} intent={intent} />;
 }
 

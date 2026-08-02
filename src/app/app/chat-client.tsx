@@ -68,10 +68,12 @@ function isWebKitEngine(): boolean {
 export default function AppChat({
   savedAddress,
   userEmail,
+  userPhone,
   intent,
 }: {
   savedAddress: string | null;
   userEmail: string | null;
+  userPhone: string | null;
   intent: Intent;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -495,6 +497,19 @@ export default function AppChat({
   //   • Non-WebKit (Chrome/Firefox/Edge desktop, Chrome Android): the richer
   //     embedded modal (PravaCardForm iframe + in-page UX), which works fine.
   const [activePurchase, setActivePurchase] = useState<{ product: CannabisProduct; brand: Brand } | null>(null);
+  // The purchase_id the route uses for OTP handoff. Set when onPaid fires.
+  const [activePurchaseId, setActivePurchaseId] = useState<string | null>(null);
+  // When set, the agent is paused at Shopflo's SMS-OTP gate waiting for the
+  // user to type the code. { purchaseId, phoneMasked } or null.
+  const [pendingOtp, setPendingOtp] = useState<{ purchaseId: string; phoneMasked: string } | null>(null);
+  // Live checkout status — the route updates step + status_message as it
+  // advances. Rendered as a single updating bubble (replaces the 3 dots).
+  const [checkoutStep, setCheckoutStep] = useState<{ step: string; message: string } | null>(null);
+  // Phone number from auth metadata (saved permanently after first entry).
+  const [savedPhone, setSavedPhone] = useState<string | null>(userPhone);
+  // When set, the user needs to enter a phone before checkout can proceed
+  // (Shopflo sends a real SMS OTP to this number).
+  const [pendingPhone, setPendingPhone] = useState<{ product: CannabisProduct; brand: Brand } | null>(null);
   const [pendingPrescription, setPendingPrescription] = useState<{ product: CannabisProduct; brand: Brand; sessionId: string } | null>(null);
   // The email the agent will inject at the merchant checkout. Saul uses HIS own
   // inbox (saulsilver@agentmail.to) by default so order confirmations / tracking
@@ -524,6 +539,17 @@ export default function AppChat({
     if (!savedCardId) {
       pushAssistant(
         `Add a card to your wallet first (top-right) — then I can check you out with just a passkey tap.`,
+        "text"
+      );
+      return;
+    }
+
+    // Gate: no phone number → ask for it (Shopflo sends a real SMS OTP).
+    // Once saved, this never asks again.
+    if (!savedPhone) {
+      setPendingPhone({ product, brand });
+      pushAssistant(
+        `One thing before I check you out at ${brand.name}: their checkout (Shopflo) sends a one-time code via SMS to verify it's you. What's your phone number? I'll save it so you never have to give it again.`,
         "text"
       );
       return;
@@ -702,6 +728,103 @@ export default function AppChat({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [webkitPollingSession]);
 
+  // ── Checkout status poll (live status bubble + OTP gate) ──
+  // While /api/checkout/automate is mid-flight, poll the handoff row every 2s.
+  // The route updates step + status_message as it advances — we render those
+  // into the live status bubble. When status hits `awaiting_otp`, we also
+  // surface the OTP input prompt.
+  useEffect(() => {
+    if (!activePurchaseId) return;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const poll = async () => {
+      if (stopped) return;
+      try {
+        const res = await fetch(`/api/checkout/otp-status?purchaseId=${encodeURIComponent(activePurchaseId)}`);
+        const data = await res.json();
+        // Update the live status bubble with the latest step/message.
+        if (data.step && data.status_message) {
+          if (!stopped) setCheckoutStep({ step: data.step, message: data.status_message });
+        }
+        // OTP gate: surface the prompt when the route pauses for the code.
+        if (data.status === "awaiting_otp" && data.phone_masked) {
+          if (!stopped) setPendingOtp({ purchaseId: activePurchaseId, phoneMasked: data.phone_masked });
+        } else if (data.status === "consumed" || data.status === "provided") {
+          if (!stopped) setPendingOtp(null);
+        }
+        // Keep polling until the route completes (activePurchaseId clears).
+        if (!stopped && activePurchaseId) {
+          timer = setTimeout(poll, 2000);
+        }
+      } catch {
+        // transient — keep polling
+        if (!stopped) timer = setTimeout(poll, 2000);
+      }
+    };
+    poll();
+
+    return () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [activePurchaseId]);
+
+  // Submit the phone number the user typed → /api/profile/phone (saves it
+  // permanently to user_metadata). Then resume checkout from where it paused.
+  const submitPhone = async (rawPhone: string) => {
+    const phone = rawPhone.replace(/\D/g, "");
+    if (phone.length < 10) {
+      pushAssistant("That doesn't look like a valid phone number — try again with all 10 digits.", "text");
+      return;
+    }
+    try {
+      const res = await fetch("/api/profile/phone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone }),
+      });
+      if (res.ok) {
+        setSavedPhone(phone);
+        setPendingPhone(null);
+        pushAssistant(`Saved. I'll use ${phone} whenever a checkout needs to verify you. Resuming…`, "text");
+        // Resume the purchase that was paused waiting for the phone.
+        const p = pendingPhone;
+        if (p) {
+          // Re-run with skipAddressCheck=true since we already passed that gate.
+          // chosenEmail isn't known yet — the email choice fires next.
+          runPayment(p.product, p.brand, true);
+        }
+      } else {
+        const d = await res.json().catch(() => ({}));
+        pushAssistant(`Couldn't save that number (${d.error ?? "unknown error"}). Try again?`, "text");
+      }
+    } catch {
+      pushAssistant("Couldn't reach the server to save your number. Check your connection.", "text");
+    }
+  };
+
+  // Submit the OTP the user typed → /api/checkout/provide-otp.
+  const submitOtp = async (code: string) => {
+    if (!pendingOtp) return;
+    try {
+      const res = await fetch("/api/checkout/provide-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ purchaseId: pendingOtp.purchaseId, otp: code }),
+      });
+      if (res.ok) {
+        setPendingOtp(null);
+        pushAssistant("Got it — passing the OTP to the checkout now. Hang tight while it verifies and loads the card step.", "text");
+      } else {
+        const d = await res.json().catch(() => ({}));
+        pushAssistant(`Couldn't submit that OTP (${d.error ?? "unknown error"}). Try again?`, "text");
+      }
+    } catch {
+      pushAssistant("Couldn't reach the server to submit the OTP. Check your connection and try again.", "text");
+    }
+  };
+
   // Called when the payment modal reports success.
   const onPaid = async ({ txnRefId, sessionId }: { txnRefId: string; sessionId: string }) => {
     if (!activePurchase) return;
@@ -711,7 +834,12 @@ export default function AppChat({
 
     try {
       pushAssistant(`Payment approved! Saul Silver is now autonomously navigating to ${brand.name} to complete the checkout...`, "text");
-      
+
+      // Generate a purchaseId the client and route share, so the OTP handoff
+      // row the route writes can be polled + filled from here.
+      const purchaseId = `pur_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+      setActivePurchaseId(purchaseId);
+
       // Run the Stagehand automation to fetch the OTC and check out on the merchant
       const autoRes = await fetch("/api/checkout/automate", {
         method: "POST",
@@ -719,11 +847,8 @@ export default function AppChat({
         body: JSON.stringify({
           sessionId,
           txnRefId,
-          // The email to inject at the merchant checkout. When Saul uses his own
-          // inbox, the order confirmation / tracking land at saulsilver@agentmail.to.
+          purchaseId,
           contactEmail: contactEmail ?? undefined,
-          // product_url is the real per-SKU page (e.g. trymoonimpact.com/products/stellardust).
-          // Fall back to the brand website, then the brand-name guess — in that order.
           productUrl: (product as any).product_url || brand.website || `https://${brand.name.toLowerCase().replace(/\s+/g, "")}.com`,
           merchantName: brand.name
         }),
@@ -782,6 +907,10 @@ export default function AppChat({
     } finally {
       setBusy(false);
       setActivePurchase(null);
+      setActivePurchaseId(null);
+      setPendingOtp(null);
+      setPendingPhone(null);
+      setCheckoutStep(null);
       // Reset the email choice so the next purchase re-asks "your email or mine?"
       setContactEmail(null);
     }
@@ -860,6 +989,11 @@ export default function AppChat({
                 </div>
               )}
 
+              {/* Phone collection — Shopflo sends a real SMS OTP to verify you */}
+              {pendingPhone && !busy && (
+                <PhonePrompt onSubmit={submitPhone} />
+              )}
+
               {/* Email choice — "your email or mine?" at checkout */}
               {pendingEmailChoice && !busy && lastText.includes("saulsilver@agentmail.to") && (
                 <div className="flex flex-wrap gap-2 pl-[44px] pr-4 pt-1 animate-fade-in-up">
@@ -895,6 +1029,14 @@ export default function AppChat({
                 </div>
               )}
 
+              {/* OTP step-up — Shopflo sends a real SMS; the agent needs the code */}
+              {pendingOtp && busy && (
+                <OtpPrompt
+                  phoneMasked={pendingOtp.phoneMasked}
+                  onSubmit={submitOtp}
+                />
+              )}
+
               {/* Prescription intent quick-picks */}
               {pendingPrescription && !busy && lastText.includes("already have a prescription") && (
                 <div className="flex flex-wrap gap-2 pl-[44px] pr-4 pt-1 animate-fade-in-up">
@@ -928,7 +1070,8 @@ export default function AppChat({
           );
         })()}
 
-        {busy && <ThinkingIndicator />}
+        {busy && !pendingOtp && !checkoutStep && <ThinkingIndicator />}
+        {busy && !pendingOtp && checkoutStep && <CheckoutStatusBubble message={checkoutStep.message} />}
         <div className="h-32 shrink-0" />
       </div>
 
@@ -1021,6 +1164,157 @@ function ThinkingIndicator() {
         <span className="h-2 w-2 animate-thinking-dot rounded-full bg-ink-muted" style={{ animationDelay: "0ms" }} />
         <span className="h-2 w-2 animate-thinking-dot rounded-full bg-ink-muted" style={{ animationDelay: "200ms" }} />
         <span className="h-2 w-2 animate-thinking-dot rounded-full bg-ink-muted" style={{ animationDelay: "400ms" }} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Phone collection prompt. Shown once when the user has no phone on file and
+ * hits checkout — Shopflo needs a real number to send the SMS OTP. The number
+ * is saved permanently so this never appears again.
+ */
+function PhonePrompt({ onSubmit }: { onSubmit: (phone: string) => void }) {
+  const [value, setValue] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = () => {
+    const digits = value.replace(/\D/g, "");
+    if (digits.length < 10) {
+      setError("Enter all 10 digits.");
+      return;
+    }
+    onSubmit(digits);
+  };
+
+  return (
+    <div className="flex flex-col gap-2 pl-[44px] pr-4 pt-1 animate-fade-in-up">
+      <div className="rounded-2xl rounded-tl-sm bg-noir-card px-4 py-3">
+        <p className="text-sm text-ink-soft">
+          <span className="font-medium text-resin-light">Your phone number</span> — I&apos;ll save it
+          so you never have to enter it again.
+        </p>
+        <div className="mt-3 flex gap-2">
+          <input
+            type="tel"
+            inputMode="numeric"
+            placeholder="98765 43210"
+            value={value}
+            autoFocus
+            onChange={(e) => { setValue(e.target.value); setError(null); }}
+            onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+            className="flex-1 rounded-lg border border-border bg-noir px-3 py-2 text-sm text-ink outline-none focus:border-resin/60 focus:ring-1 focus:ring-resin/30"
+          />
+          <button
+            onClick={submit}
+            className="rounded-lg border border-resin/40 bg-resin/10 px-4 py-2 text-sm font-medium text-resin-light transition-all hover:-translate-y-0.5 hover:bg-resin/20"
+          >
+            Save
+          </button>
+        </div>
+        {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Live checkout status bubble — replaces the 3-dot ThinkingIndicator once the
+ * route starts emitting step updates. Single bubble that updates in place:
+ * the message text swaps as the step changes, with a pulsing dot to signal
+ * "still working." The 3 dots still show for the brief gap before the first
+ * step lands (e.g. while the route is resolving Prava credentials).
+ */
+function CheckoutStatusBubble({ message }: { message: string }) {
+  return (
+    <div className="flex items-center gap-3 text-ink-soft">
+      <Avatar />
+      <div className="flex items-center gap-2 rounded-2xl rounded-tl-sm bg-noir-card px-4 py-3">
+        <span className="relative flex h-2 w-2 shrink-0">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-resin opacity-60" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-resin-light" />
+        </span>
+        <span key={message} className="animate-fade-in-up text-sm">
+          {message}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * OTP step-up prompt. Shopflo (the Indian checkout used by Trost etc.) sends a
+ * real SMS OTP before any card form appears. The agent can't receive SMS, so
+ * it pauses and surfaces this input. The user types the code; submitOtp posts
+ * it to /api/checkout/provide-otp, the route picks it up and injects it.
+ */
+function OtpPrompt({ phoneMasked, onSubmit }: {
+  phoneMasked: string;
+  onSubmit: (code: string) => void;
+}) {
+  const [digits, setDigits] = useState<string[]>(["", "", "", ""]);
+  const [error, setError] = useState<string | null>(null);
+  const refs = useRef<(HTMLInputElement | null)[]>([]);
+
+  const handleChange = (i: number, raw: string) => {
+    const v = raw.replace(/\D/g, "").slice(-1);
+    const next = [...digits];
+    next[i] = v;
+    setDigits(next);
+    setError(null);
+    if (v && i < 3) refs.current[i + 1]?.focus();
+    // Auto-submit when the 4th digit lands.
+    if (v && i === 3) {
+      const code = next.join("");
+      if (code.length === 4) {
+        onSubmit(code);
+        // Clear local state after submit (the parent closes the prompt).
+        setDigits(["", "", "", ""]);
+      }
+    }
+  };
+
+  const handleKey = (i: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Backspace" && !digits[i] && i > 0) {
+      refs.current[i - 1]?.focus();
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const text = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 4);
+    if (text.length === 4) {
+      e.preventDefault();
+      setDigits(text.split(""));
+      onSubmit(text);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-2 pl-[44px] pr-4 pt-1 animate-fade-in-up">
+      <div className="rounded-2xl rounded-tl-sm bg-noir-card px-4 py-3">
+        <p className="text-sm text-ink-soft">
+          <span className="font-medium text-resin-light">Verify it&apos;s you.</span>{" "}
+          The checkout sent a 4-digit code to{" "}
+          <span className="font-mono text-ink">{phoneMasked}</span>. Type it here and
+          I&apos;ll pass it straight through.
+        </p>
+        <div className="mt-3 flex gap-2" onPaste={handlePaste}>
+          {digits.map((d, i) => (
+            <input
+              key={i}
+              ref={(el) => { refs.current[i] = el; }}
+              type="tel"
+              inputMode="numeric"
+              maxLength={1}
+              value={d}
+              autoFocus={i === 0}
+              onChange={(e) => handleChange(i, e.target.value)}
+              onKeyDown={(e) => handleKey(i, e)}
+              className="h-12 w-10 rounded-lg border border-border bg-noir text-center text-lg font-semibold text-ink outline-none focus:border-resin/60 focus:ring-1 focus:ring-resin/30"
+            />
+          ))}
+        </div>
+        {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
       </div>
     </div>
   );
