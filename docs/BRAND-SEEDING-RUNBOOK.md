@@ -311,38 +311,43 @@ SaulSilver is also a *self-populating* catalog: if a user names a brand that
 isn't in the database yet, the agent researches it live via `researchBrand()` in
 `src/lib/research.ts`, and the next person who asks gets it instantly.
 
-**This live path must run the ENTIRE pipeline — not just the Supabase upsert.**
-A brand discovered live is worthless if it has no Senso trust doc (the sommelier
-can't ground a recommendation on it) or no support email (prescription routing
-fails or fabricates a bad address).
+**This live path runs the ENTIRE pipeline automatically** — Supabase upsert
+*and* support-email extraction *and* Senso ingest. All three were wired in
+commit `e1ede93`. You don't need to do anything special; calling
+`researchBrand()` (or hitting `POST /api/research`) does the right thing.
 
-### What the live path must do (in order)
+### What the live path does (in order)
 
 When a user says "what about [new brand]?" and it's not in the catalog:
 
-1. **Gather context** — web search results + Senso trust data for the brand name
-2. **Structure via OpenAI** (`researchBrand` already does this) → `{ brand, products, research }`
-3. **Capture `support_email`** — extract the REAL support/contact email from the gathered context (footer, contact page, terms). ⚠️ **GAP: `research.ts` does NOT currently extract this** — see "Known gaps to fix" below. Until wired in, the live path leaves `support_email` null and the prescription route falls back to the broken `support@<domain>` guess.
-4. **Upsert Supabase** — `brands` (+ support_email), `products`, `brand_research` (the agent already does this part)
-5. **Ingest into Senso** — build a `BrandTrustDoc` from the structured result + any verbatim comments/reviews in the context, then `ingestBrand()` + `waitUntilIndexed()`. ⚠️ **GAP: `research.ts` does NOT currently call the Senso ingest** — see below.
-6. **Confirm** with a `searchTrust()` verification query
+1. **Gather context** — `gatherContext()` fetches the homepage + collection + product pages and extracts readable text, JSON-LD product data, prices, and mg/dosage patterns
+2. **Structure via OpenAI** (`researchBrand`) → `{ brand, products, research }`, including `brand.support_email` extracted from the context with an explicit "never fabricate" instruction
+3. **Senso ingest** — `researchBrand()` calls `ingestResearchIntoSenso()` which builds a `BrandTrustDoc` from the structured result and ingests it via `ingestBrand()`. Best-effort + non-blocking — a Senso failure never blocks the brand from saving to Supabase, and it does NOT `waitUntilIndexed()` so the user isn't held ~30s
+4. **Upsert Supabase** (`/api/research` route) — `brands` (incl. `support_email`), `products`, `brand_research`
 
-### Known gaps to fix in `research.ts` (flag for whoever wires the live path)
+### Live path vs. manual seed — the depth tradeoff
 
-Both gaps mean the live path currently produces an *incomplete* brand record.
-The manual seed scripts (Option A) already do the right thing — these gaps are
-specifically in the automated `researchBrand()` function:
+The live path is **thinner than the manual seed** by design. Know the difference:
 
-| Gap | Current behavior | Required behavior |
+| Aspect | Live path (`researchBrand`) | Manual seed (Option A) |
 |---|---|---|
-| **No `support_email` extraction** | The OpenAI `brandSchema` has no email field; `support_email` is left null → prescription route fabricates `support@<domain>` | Add `support_email` to the schema; instruct the model to extract the real address from context, or null if not found (never fabricate) |
-| **No Senso ingest** | `researchBrand()` returns structured data but never calls `ingestBrand()` → new brands have no grounded trust signal | After the Supabase upsert, build a `BrandTrustDoc` and call `ingestBrand()` + `waitUntilIndexed()` |
+| `support_email` | ✅ extracted (real, or null — never fabricated) | ✅ human-verified |
+| Senso doc | ✅ ingested, but uses the model's `reviews_summary` digest only | ✅ ingested with **verbatim** IG comments + review quotes |
+| Composition %, side effects | Only if present in scraped page text | Human-captured, always complete |
+| Verbatim quotes | ❌ (model digests, not raw quotes) | ✅ (real quotes, attributed) |
 
-**Bottom line for whoever implements this:** the live path is not "just call
-`researchBrand`." It's "call `researchBrand`, then make sure support_email and
-Senso ingest also happen before the brand is considered fully added." The
-manual seed runbook (steps 1–8) is the spec for what "fully added" means —
-the live path must reach the same end state.
+**Implication for the 13 pre-seeded brands:** use the **manual seed path** (Option
+A + Senso seed script) — the verbatim quotes and full composition are what make
+Senso's grounded answers rich for judges. The live path is the safety net for
+brands a judge springs on you that you didn't pre-seed; it'll work, but thinner.
+
+### What CAN still go wrong on the live path (watch for these)
+
+These aren't gaps — they're inherent limitations to test for:
+
+- **No support email in context** → `support_email` is null → prescription route falls back to `support@<domain>` guess (still broken, but only as a last resort). Mitigation: the OpenAI instruction returns empty string if no real address is found, so it's null rather than fabricated.
+- **Senso ingest async** → a brand researched live isn't queryable in Senso for ~30–60s after research completes. The match flow degrades gracefully to static trust meanwhile. Not a bug — the alternative is blocking the user.
+- **`gatherContext` may miss pages** → if the brand's site blocks the bot UA or has unusual URL structure, context is thin → OpenAI extracts less. Worth testing on a couple of the 12 brand URLs before relying on the live path in a demo.
 
 ---
 
@@ -363,7 +368,7 @@ the live path must reach the same end state.
 - [ ] **Senso ingest**: `instagramComments[]` and `reviewQuotes[]` contain ≥3 verbatim quotes each (real text, not paraphrase)
 - [ ] **Senso ingest**: run `npx tsx scripts/seed-senso-<brand-slug>.ts` — confirms "✓ Indexed" + the test query returns a grounded answer citing the doc
 - [ ] **Senso wait**: `waitUntilIndexed()` was awaited before any query (no querying against an unfinished index)
-- [ ] **Live path only**: `research.ts` was updated to extract `support_email` + call `ingestBrand()` (see "Known gaps" above) — otherwise the live path produces incomplete records
+- [ ] **Live path only** (if testing `researchBrand`): `support_email` populated (or null — never fabricated), and a Senso doc for the brand appears in the Senso KB within ~60s of research completing
 
 ---
 
