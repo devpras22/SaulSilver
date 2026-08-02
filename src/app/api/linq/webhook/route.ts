@@ -111,18 +111,27 @@ export async function POST(req: NextRequest) {
           messageText += `${index + 1}. 🌿 ${match.brand.name} ${match.product.name}\n`;
           messageText += `   Price: ₹${match.product.price_inr}\n`;
           messageText += `   Trust Score: ${Math.round(match.brand.trust_score * 100)}/100\n`;
-          messageText += `   Why: ${match.reasons[0]}\n\n`;
+          
+          const sensoReason = match.reasons.find(r => r.startsWith("Senso: "));
+          const primaryReason = match.reasons[0];
+          
+          if (sensoReason) {
+             messageText += `   Why: Verified users say "${sensoReason.replace("Senso: ", "").trim()}"\n\n`;
+          } else {
+             messageText += `   Why: ${primaryReason}\n\n`;
+          }
         });
         
         const urlArgs = new URLSearchParams(args).toString();
         const checkoutLink = `https://saul.pras.fun/app?${urlArgs}`;
         
-        messageText += `Tap here to view the full details and checkout securely with Prava: ${checkoutLink}`;
+        messageText += `Tap the card below to view the full details and checkout securely with Prava:`;
         
         await sendMessage({
           to: from,
           chatId,
           text: messageText,
+          link: checkoutLink,
         });
         
         // Clear convo so they can start fresh next time

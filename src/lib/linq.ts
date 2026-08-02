@@ -30,7 +30,8 @@ interface MessagePart {
 
 interface SendOptions {
   to: string;           // E.164, e.g. +13105551234
-  text: string;
+  text?: string;
+  link?: string;        // URL for iMessage App attachment
   /** Start a new chat vs reply in existing — Linq handles dedup */
   chatId?: string;
 }
@@ -52,21 +53,25 @@ async function linqFetch(path: string, body: unknown, method = "POST") {
   return data;
 }
 
-/** Send a text message. First outbound message to a number must not contain links. */
-export async function sendMessage({ to, text, chatId }: SendOptions) {
+/** Send a text or link message. First outbound message to a number must not contain links. */
+export async function sendMessage({ to, text, link, chatId }: SendOptions) {
   if (!FROM) throw new Error("LINQ_FROM_NUMBER not set");
+
+  const parts: MessagePart[] = [];
+  if (text) parts.push({ type: "text", value: text });
+  if (link) parts.push({ type: "link", url: link });
 
   // Use existing chat endpoint if we have a chatId, else create a new chat
   const path = chatId ? `/chats/${chatId}/messages` : "/chats";
   const payload = chatId
     ? {
         from: FROM,
-        message: { parts: [{ type: "text" as const, value: text }] },
+        message: { parts },
       }
     : {
         from: FROM,
         to: [to],
-        message: { parts: [{ type: "text" as const, value: text }] },
+        message: { parts },
       };
 
   return linqFetch(path, payload);

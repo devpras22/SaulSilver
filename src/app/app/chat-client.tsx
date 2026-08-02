@@ -336,7 +336,24 @@ export default function AppChat({
         return;
       }
 
-      await new Promise((r) => setTimeout(r, 600));
+      if (data.matches && data.matches.length > 0) {
+        const topMatch = data.matches[0];
+        const sensoReason = topMatch.reasons.find((r: string) => r.startsWith("Senso: "));
+        
+        const effectStr = p.effect ? p.effect.replace("_", " ") : "that vibe";
+        let verbal = `Here are the top matches for ${effectStr}. I highly recommend the ${topMatch.brand.name} ${topMatch.product.name}.`;
+        
+        if (sensoReason) {
+          const quote = sensoReason.replace("Senso: ", "").trim();
+          verbal += ` Verified users really rave about this — "${quote}"`;
+        }
+        
+        pushAssistant(verbal, "text");
+        await new Promise((r) => setTimeout(r, 800)); // let them read it briefly before the cards fan out
+      } else {
+        await new Promise((r) => setTimeout(r, 600));
+      }
+
       pushAssistant("", "recommendation", { matches: data.matches, profile: p });
     } catch (e) {
       setMessages((m) => m.filter((msg) => msg.kind !== "thinking"));
