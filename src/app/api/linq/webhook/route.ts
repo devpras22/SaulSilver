@@ -229,11 +229,64 @@ export async function POST(req: NextRequest) {
         
         await stopTyping(chatId);
         return NextResponse.json({ ok: true });
+      } else if (toolCall.type === "function" && toolCall.function.name === "researchBrand") {
+        const args = JSON.parse(toolCall.function.arguments);
+        
+        await sendMessage({
+          to: from,
+          chatId,
+          text: `gimme a sec, looking up ${args.brandName}...`,
+        });
+        
+        // Execute research via our internal API endpoint
+        const res = await fetch(`${origin}/api/research`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            brandName: args.brandName,
+            forceRefresh: args.forceRefresh,
+          }),
+        });
+        
+        const data = await res.json();
+        
+        let content = `Research result for ${args.brandName}:\nStatus: ${data.status}\n`;
+        if (data.products && data.products.length > 0) {
+          content += `Found ${data.products.length} products. Highlights: ${data.products.slice(0, 3).map((p: any) => p.name).join(", ")}.\n`;
+        } else {
+          content += "No gummies/products found.\n";
+        }
+        if (data.research?.summary) {
+          content += `Summary: ${data.research.summary}\n`;
+        }
+        
+        state.messages.push({
+          role: "tool",
+          tool_call_id: toolCall.id,
+          content: content + "\n\nTell the user what you found in your own words. Keep it casual.",
+        });
+        
+        // Get Saul's natural response
+        const followUp = await askSaul(state.messages);
+        const saulResponse = followUp.choices[0].message;
+        state.messages.push(saulResponse);
+        convos.set(from, state);
+        
+        if (saulResponse.content) {
+          await sendMessage({
+            to: from,
+            chatId,
+            text: saulResponse.content,
+          });
+        }
+        
+        await stopTyping(chatId);
+        return NextResponse.json({ ok: true });
       } else {
         await sendMessage({
           to: from,
           chatId,
-          text: "looking into that for you rn...",
+          text: "my bad, my brain short-circuited.",
         });
       }
     } else if (aiMessage.content) {
