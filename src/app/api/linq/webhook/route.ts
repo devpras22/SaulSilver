@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
       if (selected) {
         if (chatId) await setTyping(chatId, true).catch(() => {});
 
-        // 1. Create a payment via Linq
+        // 1. Create a payment via Linq Agentcard API
         const paymentRes = await fetch("https://api.linqapp.com/api/partner/v3/payments", {
           method: "POST",
           headers: {
@@ -76,44 +76,46 @@ export async function POST(req: NextRequest) {
             description: `Order: ${selected.product.name}`,
             merchant: {
               name: selected.brand.name,
-              url: "https://prava.space"
+              url: selected.brand.website || "https://prava.space"
             }
           })
         });
         
-        let paymentUrl = "https://prava.space/checkout"; // fallback
+        let paymentUrl = "";
+        let paymentWorked = false;
         if (paymentRes.ok) {
           const payment = await paymentRes.json();
-          paymentUrl = payment.attach_url || payment.approval_url || paymentUrl;
+          paymentUrl = payment.attach_url || payment.approval_url || "";
+          paymentWorked = !!paymentUrl;
         }
         
-        const imgPath = productImage(selected.brand.id, selected.product.name, selected.product.image_url);
-        const absoluteImgUrl = imgPath.startsWith("http") ? imgPath : `${origin}${imgPath}`;
-        
-        // 2. Send the Agentcard (iMessage App) part
-        const parts: MessagePart[] = [{
-          type: "imessage_app",
-          app: {
-            name: "Prava Agentcard",
-            team_id: "PRAVA12345",
-            bundle_id: "space.prava.Agentcard"
-          },
-          url: paymentUrl,
-          fallback_text: "Pay with Prava",
-          layout: {
-            caption: "Secure Checkout",
-            subcaption: `${selected.brand.name} - ${selected.product.name}`,
-            image_url: absoluteImgUrl
-          }
-        }];
-
-        await sendMessage({ to: from, chatId, parts });
+        if (paymentWorked && paymentUrl) {
+          // Send a rich link preview — tappable card that opens Prava checkout in-app
+          await sendMessage({
+            to: from,
+            chatId,
+            parts: [{ type: "link", url: paymentUrl }],
+          });
+          
+          // Follow up with a casual text
+          await sendMessage({
+            to: from,
+            chatId,
+            text: `thats ur secure checkout for the ${selected.product.name} 🔒 tap it and prava handles the rest. ur card info never touches us`,
+          });
+        } else {
+          // Payment API didn't work — send a text explanation
+          await sendMessage({
+            to: from,
+            chatId,
+            text: `yo so the payment link didnt generate rn... prava sandbox is being weird. but the product is ${selected.product.name} by ${selected.brand.name} for ₹${selected.product.price_inr}. you can grab it from their site directly or try again in a bit`,
+          });
+        }
         
         // Clear pending, but keep the chat history
         delete state.pendingRecommendations;
         convos.set(from, state);
         
-        // STOP TYPING BEFORE RETURN — not in finally
         await stopTyping(chatId);
         return NextResponse.json({ ok: true });
       }
@@ -133,7 +135,6 @@ export async function POST(req: NextRequest) {
     const aiMessage = response.choices[0].message;
     
     state.messages.push(aiMessage);
-    // SAVE THE AI MESSAGE SO IT REMEMBERS WHAT IT JUST SAID
     convos.set(from, state);
     
     if (aiMessage.tool_calls && aiMessage.tool_calls.length > 0) {
@@ -142,10 +143,9 @@ export async function POST(req: NextRequest) {
       if (toolCall.type === "function" && toolCall.function.name === "matchProducts") {
         const args = JSON.parse(toolCall.function.arguments);
         
-        // EXECUTE MATCH LOCALLY INSTEAD OF SENDING A BLIND LINK
+        // EXECUTE MATCH LOCALLY
         const supabase = await createClient();
         
-        // 1. Pull the catalog
         const [{ data: brands }, { data: products }] = await Promise.all([
           supabase.from("brands").select("*").eq("region", "IN"),
           supabase.from("products").select("*").eq("in_stock", true),
@@ -155,17 +155,15 @@ export async function POST(req: NextRequest) {
           await sendMessage({
             to: from,
             chatId,
-            text: "Damn, looks like the catalog is totally empty right now.",
+            text: "damn the catalog is totally empty rn. thats not supposed to happen lol",
           });
           convos.delete(from);
           await stopTyping(chatId);
           return NextResponse.json({ ok: true });
         }
         
-        // 2. Senso trust enrichment
         const enrichedBrands = await enrichBrandsWithSensoTrust(brands as any);
         
-        // 3. Match
         const matches = matchProducts(
           products as any,
           enrichedBrands,
@@ -179,38 +177,43 @@ export async function POST(req: NextRequest) {
           await sendMessage({
             to: from,
             chatId,
-            text: "Couldn't find anything that matches that exact vibe, man. Try adjusting your preferences?",
+            text: "couldnt find anything that matches that vibe tbh. try a different effect maybe?",
           });
           await stopTyping(chatId);
           return NextResponse.json({ ok: true });
         }
         
-        // 4. Format a casual "photo dump" response for iMessage
-        const parts: MessagePart[] = [];
+        // ── Feed results back to Saul so HE writes the recommendation text ──
+        const productSummary = top3.map((match, i) => {
+          const sensoReason = match.reasons.find((r: string) => r.startsWith("Senso: "));
+          return `${i + 1}. ${match.brand.name} - ${match.product.name} — ₹${match.product.price_inr}${sensoReason ? ` (${sensoReason.replace("Senso: ", "")})` : ""}`;
+        }).join("\n");
         
-        // Step 4a: Send all images first (the photo dump)
+        // Add the tool result to conversation so Saul can respond naturally
+        state.messages.push({
+          role: "tool",
+          tool_call_id: toolCall.id,
+          content: `Found ${top3.length} matches:\n${productSummary}\n\nTell the user about these. End by saying they can reply 1, 2, or 3 to checkout with prava. Keep it casual.`,
+        });
+        
+        // Get Saul's natural response
+        const followUp = await askSaul(state.messages);
+        const saulResponse = followUp.choices[0].message;
+        state.messages.push(saulResponse);
+        convos.set(from, state);
+        
+        const saulText = saulResponse.content || `found ${top3.length} options for you. reply 1 2 or 3 to cop one`;
+        
+        // Send images as photo dump
+        const parts: MessagePart[] = [];
         top3.forEach((match) => {
           const imgPath = productImage(match.brand.id, match.product.name, match.product.image_url);
           const absoluteImgUrl = imgPath.startsWith("http") ? imgPath : `${origin}${imgPath}`;
           parts.push({ type: "media", url: absoluteImgUrl });
         });
         
-        // Step 4b: Send one single casual text bubble explaining the stash
-        let summaryText = `Here's the stash. Found ${top3.length} solid options for you:\n\n`;
-        
-        top3.forEach((match, index) => {
-          summaryText += `${index + 1}. ${match.brand.name} ${match.product.name} — ₹${match.product.price_inr}\n`;
-          
-          const sensoReason = match.reasons.find(r => r.startsWith("Senso: "));
-          if (sensoReason) {
-             summaryText += `   "${sensoReason.replace("Senso: ", "").trim()}"\n\n`;
-          } else {
-             summaryText += `\n`;
-          }
-        });
-        
-        summaryText += `Which one's calling your name? Reply with 1, 2, or 3 to securely check out with Prava.`;
-        parts.push({ type: "text", value: summaryText });
+        // Add Saul's text as the last part
+        parts.push({ type: "text", value: saulText });
         
         await sendMessage({
           to: from,
@@ -218,7 +221,7 @@ export async function POST(req: NextRequest) {
           parts,
         });
         
-        // Keep convo so they can reply 1/2/3, and store recommendations
+        // Store recommendations for selection
         state.pendingRecommendations = top3;
         convos.set(from, state);
         
@@ -228,7 +231,7 @@ export async function POST(req: NextRequest) {
         await sendMessage({
           to: from,
           chatId,
-          text: "I'm looking into that for you...",
+          text: "looking into that for you rn...",
         });
       }
     } else if (aiMessage.content) {
@@ -239,7 +242,6 @@ export async function POST(req: NextRequest) {
       });
     }
     
-    // STOP TYPING BEFORE RETURN
     await stopTyping(chatId);
     return NextResponse.json({ ok: true });
   } catch (e) {

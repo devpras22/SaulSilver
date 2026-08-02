@@ -5,6 +5,80 @@ Do NOT start these until Step 5 is verified through the live chat UI.
 
 ---
 
+## 0a. Native Prava Checkout Widget (iMessage Agentcard)
+
+**Status:** Vision — requires Prava to ship an iMessage app extension.
+
+**The dream:** When a user picks a product, instead of sending a link that opens
+Safari/webview, we send a Linq `imessage_app` part that renders a **native checkout
+widget directly inside the iMessage bubble**. The user taps the card, a sheet slides
+up *within Messages*, they approve with Face ID, and the card updates in place from
+"Pending" → "Confirmed". They never leave the chat.
+
+**Why we can't do it yet:**
+- The `imessage_app` part requires a **real, shipping Messages app extension** on
+  the recipient's device — identified by `team_id` + `bundle_id`.
+- Prava doesn't have an iMessage app extension (yet).
+- Without one, the card falls back to plain text / broken "cannot connect" sheet.
+
+**What we do instead (today):** Send a `link` part with the Prava `attach_url`.
+This renders as a Rich Link Preview card in iMessage. Tapping opens Prava's hosted
+checkout in an in-app browser sheet. Not as seamless, but it works.
+
+**How to build it (when Prava ships an extension):**
+1. Get Prava's `team_id` and `bundle_id` for their Messages extension.
+2. Replace the `link` part in the webhook with an `imessage_app` part:
+   ```json
+   {
+     "type": "imessage_app",
+     "app": { "name": "Prava", "team_id": "XXXXXXXXXX", "bundle_id": "space.prava.MessagesExtension" },
+     "url": "<payment_session_url>",
+     "fallback_text": "Pay with Prava",
+     "layout": {
+       "caption": "Secure Checkout",
+       "subcaption": "Product name — ₹price",
+       "image_url": "<product_image>"
+     }
+   }
+   ```
+3. Use the Update App Card API (`POST /messages/{messageId}/update`) to update
+   the card in place when payment status changes (pending → authorized → succeeded).
+4. This is the killer UX that makes iMessage commerce feel native.
+
+**Value for judges:** Even documenting this vision shows we understand the platform
+deeply. The fact that we've already built the Linq + Prava integration and just need
+Prava's extension to close the loop is a strong signal.
+
+---
+
+## 0b. iMessage Product Gallery / Carousel
+
+**Status:** Vision — requires a custom iMessage app extension.
+
+**The dream:** Instead of sending 3 separate image messages (the "photo dump"),
+send a single interactive carousel card where the user swipes through products
+horizontally — like how Apple Pay or some food delivery apps show options inside
+Messages.
+
+**Why we can't do it yet:**
+- Linq has no native "gallery" message type. Multiple `media` parts just render
+  as separate attachments.
+- A swipeable carousel requires an `imessage_app` part backed by our OWN Messages
+  extension that renders the carousel UI from a URL.
+- Building a Messages extension requires an iOS app + Xcode project.
+
+**What we do instead (today):** Send multiple `media` parts (photo dump) + one
+`text` part with Saul's recommendation text. Each image is a separate bubble.
+
+**How to build it (post-hackathon):**
+1. Build a minimal iOS app with a Messages extension.
+2. The extension reads a URL param (e.g. `?products=id1,id2,id3`) and renders a
+   horizontal carousel with product images, names, and prices.
+3. Tapping a product sends a reply message that our webhook picks up.
+4. Ship to App Store (or TestFlight for demo).
+
+---
+
 ## 1. Agent inbox reader (the "C" of the agent-email feature)
 
 **Status:** A+B done (agent sends email, uses its inbox address at checkout). C (reading
