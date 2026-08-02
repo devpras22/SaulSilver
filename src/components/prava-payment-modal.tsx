@@ -141,27 +141,20 @@ export function PravaPaymentModal({
     };
   }, [open, purchase, cardId, startPolling]);
 
-  // On completed, report APPROVED + fire onPaid.
+  // On completed, fire onPaid. The APPROVED report is intentionally NOT sent
+  // here: this flow always triggers an autonomous checkout (/checkout/automate)
+  // next, which drives the REAL merchant page and reports the true outcome
+  // (DECLINED on sandbox) to Prava. If we reported APPROVED here, it would
+  // consume the mandate and finalize the transaction as "completed" — then the
+  // later DECLINED from the route would be silently rejected with
+  // INVALID_STATE, and the dashboard would wrongly show Success. The checkout
+  // route owns the final report.
   useEffect(() => {
     if (flow !== "completed" || !paymentResult) return;
     const txnRefId = paymentResult.transactions?.[0]?.line_items?.[0]?.txn_ref_id || paymentResult.transactions?.[0]?.txn_id;
 
     (async () => {
-      // Report APPROVED so the transaction doesn't stick in awaiting_result.
       if (txnRefId) {
-        try {
-          await fetch("/api/pay/report", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              sessionId: paymentResult.session_id,
-              txnRefId,
-              status: "APPROVED",
-            }),
-          });
-        } catch {
-          // non-fatal
-        }
         onPaid({ txnRefId, sessionId: paymentResult.session_id });
       }
     })();

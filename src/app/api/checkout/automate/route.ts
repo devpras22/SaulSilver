@@ -174,10 +174,13 @@ export async function POST(req: NextRequest) {
     console.log(`[checkout/automate] Merchant response:`, extractResult);
 
     // ── 8. Report DECLINED to Prava ──
+    // On sandbox, the expected outcome is a merchant decline of the one-time
+    // test card. We report DECLINED regardless of whether we captured a clean
+    // decline message — the card is single-use and will not complete.
     console.log(`[checkout/automate] Reporting DECLINED to Prava...`);
     const report = await reportStatus(sessionId, txnRefId, "DECLINED");
 
-    await stagehand.close();
+    await stagehand.close().catch(() => {});
 
     return NextResponse.json({
       success: true,
@@ -188,6 +191,9 @@ export async function POST(req: NextRequest) {
       visaConfirmation: report.visaConfirmation,
     });
   } catch (stagehandError) {
+    // Even if the automation crashed mid-flight, report DECLINED so the
+    // transaction doesn't sit in awaiting_result forever (the modal no longer
+    // pre-reports APPROVED, so this is the ONLY report that will land).
     let reportConfirmed = false;
     let reportError: string | undefined;
     try {

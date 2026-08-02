@@ -696,20 +696,13 @@ export default function AppChat({
           } else {
             const txnRefId = result.transactions?.[0]?.line_items?.[0]?.txn_ref_id || result.transactions?.[0]?.txn_id;
             if (txnRefId) {
-              // Paused state (creds_generated / awaiting_result): report APPROVED
-              // so Prava finalizes the charge. For already-completed it's a no-op
-              // confirmation. Mirrors the modal path's /api/pay/report call.
-              if (result.status === "awaiting_result" || result.status === "creds_generated") {
-                try {
-                  await fetch("/api/pay/report", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ sessionId: result.session_id, txnRefId, status: "APPROVED" }),
-                  });
-                } catch {
-                  // non-fatal — still surface success to the user
-                }
-              }
+              // NOTE: we intentionally do NOT report APPROVED here. This path
+              // always hands off to /checkout/automate, which reports the REAL
+              // merchant outcome (DECLINED on sandbox) to Prava. A premature
+              // APPROVED would consume the mandate and finalize the transaction
+              // as "completed", causing the later DECLINED to be rejected with
+              // INVALID_STATE and the dashboard to wrongly show Success.
+              // The checkout route owns the final report-status call.
               onPaid({ txnRefId, sessionId: result.session_id });
             }
           }
