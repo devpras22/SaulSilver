@@ -104,16 +104,62 @@ export async function POST(req: NextRequest) {
         (p) => !seededNames.has(normalizeName(p.name))
       );
 
+      // CRITICAL: the live OpenAI verdict is for detecting NEW PRODUCTS only.
+      // It must NOT overwrite the curated verdict/trust_score/findings that the
+      // hand-seeded brands carry (rubric-scored, defensible to a judge). OpenAI
+      // reading thin scraped text is far harsher than the rubric — letting it
+      // nuke a "verified" into "caution" defeats the whole trust layer.
+      // So for an existing brand we keep the seeded verdict and only update
+      // last_researched (+ append a research row noting the re-check).
+      const { data: curated } = await supabase
+        .from("brands")
+        .select("*")
+        .eq("id", result.brand.id)
+        .maybeSingle();
+      const curatedBrand: Brand | undefined = curated as Brand | undefined;
+      const { data: curatedResearch } = await supabase
+        .from("brand_research")
+        .select("*")
+        .eq("brand_id", result.brand.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
       if (newGummies.length === 0) {
-        // Case 4: nothing changed. Don't touch products at all. We still refresh
-        // the brand row + append a research row so last_researched is honest.
+        // Case 4: nothing changed. Don't touch products. Bump last_researched
+        // only — keep the curated verdict intact.
         status = "existing_brand_unchanged";
-        await upsertBrand(supabase, result.brand);
+        if (curatedBrand) {
+          await upsertBrand(supabase, { ...curatedBrand, last_researched: new Date().toISOString() });
+          // Serve the curated brand so the card shows the real verdict, not OpenAI's.
+          result.brand = curatedBrand;
+          if (curatedResearch) {
+            result.research = {
+              query: curatedResearch.query,
+              verdict: curatedResearch.verdict,
+              findings: curatedResearch.findings ?? { summary: "" },
+              sources: curatedResearch.sources ?? [],
+              trust_score: curatedResearch.trust_score,
+            };
+          }
+        }
       } else {
         // Case 3: genuinely-new gummies. INSERT ONLY — never delete/overwrite.
         status = "existing_brand_refreshed";
         delta = newGummies.map((p) => p.name);
-        await upsertBrand(supabase, result.brand);
+        if (curatedBrand) {
+          await upsertBrand(supabase, { ...curatedBrand, last_researched: new Date().toISOString() });
+          result.brand = curatedBrand;
+          if (curatedResearch) {
+            result.research = {
+              query: curatedResearch.query,
+              verdict: curatedResearch.verdict,
+              findings: curatedResearch.findings ?? { summary: "" },
+              sources: curatedResearch.sources ?? [],
+              trust_score: curatedResearch.trust_score,
+            };
+          }
+        }
         await insertProducts(supabase, result.brand.id, newGummies);
       }
     }

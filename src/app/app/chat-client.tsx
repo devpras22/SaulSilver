@@ -375,9 +375,11 @@ export default function AppChat({
       const res = await fetch("/api/research", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // forceRefresh so "is X's new gummy out yet?" actually re-crawls live
-        // instead of returning the 7-day cache. The freshness demo needs this.
-        body: JSON.stringify({ brandName, forceRefresh: true }),
+        // Default to cache for known brands → shows the curated dossier with its
+        // hand-scored verdict (verified/caution/etc.). forceRefresh is reserved
+        // for an explicit freshness check ("is X's new gummy out yet?") so we
+        // don't let a live OpenAI re-snap overwrite a curated verdict.
+        body: JSON.stringify({ brandName }),
       });
       const data = await res.json();
       setMessages((m) => m.filter((msg) => msg.kind !== "thinking"));
