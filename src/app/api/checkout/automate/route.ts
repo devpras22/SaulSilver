@@ -249,15 +249,25 @@ function buildCardInstruction(c: {
   expiryMonth: string | null;
   expiryYear: string | null;
 }): string {
-  // Card number MUST be entered as one continuous string of digits — Stagehand
-  // handles the field chunking. Expiry as MM/YY (take last 2 digits of year).
+  // Card fields are finicky — Shopify-style checkouts use masked inputs with
+  // strict HTML5 `pattern` attributes. If we hand a formatted string the field
+  // doesn't expect, the browser throws "The string did not match the expected
+  // pattern." So:
+  //  - Sanitize the token to DIGITS ONLY (Prava tokens are usually clean, but
+  //    strip any spaces/dashes just in case a format sneaks in).
+  //  - Tell Stagehand to type digits only and let the field's own masking chunk
+  //    them — NOT to pre-format with slashes.
+  const digitsOnly = (s: string | null) => (s ?? "").replace(/\D/g, "");
+  const cardNumber = digitsOnly(c.token);
+  const cvv = digitsOnly(c.cvv);
   const yy = c.expiryYear ? c.expiryYear.slice(-2) : "";
-  const expiry = c.expiryMonth && yy ? `${c.expiryMonth}/${yy}` : "";
+  const mm = digitsOnly(c.expiryMonth);
+
   return [
-    "Fill out the credit/debit card payment form with these exact details:",
-    `Card number: ${c.token}`,
-    expiry && `Expiry date: ${expiry}`,
-    c.cvv && `CVV / security code: ${c.cvv}`,
+    "Fill out the credit/debit card payment form. Type each value as DIGITS ONLY and let the field format itself — do NOT type slashes or spaces manually, the input masks itself:",
+    `Card number: ${cardNumber}`,
+    mm && yy && `Expiry month: ${mm}, Expiry year: ${yy} (if it's one combined field, type ${mm}${yy} as digits)`,
+    cvv && `CVV / security code: ${cvv}`,
     "Name on card: Saul Silver",
     "Then STOP — do not click the pay button yet.",
   ].filter(Boolean).join(" ");

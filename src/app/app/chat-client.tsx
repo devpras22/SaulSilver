@@ -514,7 +514,7 @@ export default function AppChat({
   // poller can remove it (and its spinner) when payment completes.
   const webkitPaymentMsgRef = useRef<string | null>(null);
 
-  const runPayment = async (product: CannabisProduct, brand: Brand, skipAddressCheck = false) => {
+  const runPayment = async (product: CannabisProduct, brand: Brand, skipAddressCheck = false, chosenEmail?: string) => {
     if (!savedAddress && !skipAddressCheck) {
       setPendingPayment({ product, brand });
       setAddressModalOpen(true);
@@ -533,15 +533,26 @@ export default function AppChat({
 
     // ── Email gate: "your email or mine?" ──
     // Saul defaults to using HIS inbox (saulsilver@agentmail.to) so the order
-    // confirmation + tracking come back to the agent. Ask once per purchase;
-    // resume from the chip handler once a choice is made.
-    if (contactEmail === null) {
+    // confirmation + tracking come back to the agent.
+    //
+    // chosenEmail is passed in directly from the chip handler (NOT read from the
+    // contactEmail state) because React state updates are async — reading state
+    // right after setContactEmail() returns the STALE value, which caused the
+    // email prompt to fire twice. The caller hands us the resolved value.
+    const emailToUse = chosenEmail ?? contactEmail;
+    if (!emailToUse) {
       setPendingEmailChoice({ product, brand });
       pushAssistant(
         `Quick one before I check you out — whose email should I use at ${brand.name}? I'd suggest mine (saulsilver@agentmail.to) so the order confirmation and tracking come straight to me and I can keep you posted. Or I can use yours.`,
         "text"
       );
       return;
+    }
+
+    // Persist the resolved email into state so onPaid (which reads contactEmail
+    // downstream when it calls /checkout/automate) has the value too.
+    if (emailToUse && emailToUse !== contactEmail) {
+      setContactEmail(emailToUse);
     }
 
     // ── WebKit path: new tab, no iframe on our page ──
@@ -834,12 +845,12 @@ export default function AppChat({
                 <div className="flex flex-wrap gap-2 pl-[44px] pr-4 pt-1 animate-fade-in-up">
                   <button
                     onClick={() => {
-                      setContactEmail("saulsilver@agentmail.to");
+                      const chosen = "saulsilver@agentmail.to";
                       const p = pendingEmailChoice;
                       setPendingEmailChoice(null);
                       if (p) {
                         pushAssistant("Nice — I'll use my inbox. Order confirmation and tracking will come to me; I'll keep you posted here.", "text");
-                        runPayment(p.product, p.brand, true);
+                        runPayment(p.product, p.brand, true, chosen);
                       }
                     }}
                     className="rounded-full border border-resin/40 bg-resin/10 shadow-sm px-4 py-2 text-sm text-resin-light transition-all hover:-translate-y-0.5 hover:bg-resin/20"
@@ -849,12 +860,12 @@ export default function AppChat({
                   <button
                     onClick={() => {
                       // The customer's own email — read from auth context (passed as prop).
-                      setContactEmail(userEmail ?? "guest@saul.pras.fun");
+                      const chosen = userEmail ?? "guest@saul.pras.fun";
                       const p = pendingEmailChoice;
                       setPendingEmailChoice(null);
                       if (p) {
                         pushAssistant(`Got it — I'll use your email (${userEmail ?? "your address"}) at checkout.`, "text");
-                        runPayment(p.product, p.brand, true);
+                        runPayment(p.product, p.brand, true, chosen);
                       }
                     }}
                     className="rounded-full border border-border bg-noir/80 shadow-sm px-4 py-2 text-sm text-ink-soft transition-all hover:-translate-y-0.5 hover:border-resin/40 hover:bg-resin/10 hover:text-resin-light"
