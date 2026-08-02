@@ -751,10 +751,30 @@ export default function AppChat({
         throw new Error(autoData.error || "Automation failed");
       }
 
-      pushAssistant(
-        `Sandbox integration test successful! Saul Silver injected the Prava one-time card at ${brand.name}'s checkout, and it was cleanly declined with message: "${autoData.merchantError || "Test card declined"}". Status reported to Prava.`, 
-        "text"
-      );
+      // Honest reporting: only celebrate a decline we actually captured.
+      // `isDeclined === false` + empty `merchantError` means the card fields
+      // likely never filled and the merchant never saw the token — report it
+      // plainly so we never dress up a no-op as a win again.
+      const declinePart =
+        autoData.isDeclined && autoData.merchantError
+          ? `Saul injected the Prava one-time card at ${brand.name}'s checkout. The merchant declined it as expected: "${autoData.merchantError}".`
+          : autoData.isDeclined
+            ? `Saul injected the Prava one-time card at ${brand.name}'s checkout and it was declined as expected.`
+            : `Saul reached ${brand.name}'s checkout but couldn't confirm a decline on the merchant page — the card fields may not have filled (some merchants render the PAN inside an unreachable payment iframe).`;
+
+      // The report line: did Prava actually confirm our DECLINED?
+      // Before, this always said "Status reported to Prava" even when the
+      // call 404'd silently. Now the route returns the real confirmation.
+      const reportPart =
+        autoData.reportConfirmed === false
+          ? autoData.reportError
+            ? `⚠️ Tried to report DECLINED to Prava but it failed (${autoData.reportError}). The Prava dashboard may NOT reflect DECLINED — check it.`
+            : "⚠️ Prava did NOT confirm the DECLINED report. The dashboard may show a different status — check it."
+          : autoData.visaConfirmation === "FAILURE"
+            ? "Prava confirmed DECLINED, but the Visa confirmation came back FAILURE — flagged for manual review."
+            : "Reported DECLINED to Prava.";
+
+      pushAssistant(`${declinePart} ${reportPart}`, "text");
       
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to execute automated checkout";

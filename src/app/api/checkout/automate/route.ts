@@ -153,8 +153,11 @@ export async function POST(req: NextRequest) {
     console.log(`[checkout/automate] Merchant response:`, extractResult);
 
     // ── 5. Report DECLINED back to Prava (expected sandbox outcome) ──
+    // `reportStatus` now throws on non-2xx and returns the real Prava
+    // confirmation. We capture it so the UI can show whether DECLINED
+    // actually landed (not just that we tried).
     console.log(`[checkout/automate] Reporting DECLINED to Prava...`);
-    await reportStatus(sessionId, txnRefId, "DECLINED");
+    const report = await reportStatus(sessionId, txnRefId, "DECLINED");
 
     await stagehand.close();
 
@@ -162,20 +165,32 @@ export async function POST(req: NextRequest) {
       success: true,
       merchantError: extractResult.errorMessage,
       isDeclined: extractResult.isDeclined,
-      statusReported: "DECLINED",
+      statusReported: report.txnStatus,
+      reportConfirmed: report.confirmed,
+      visaConfirmation: report.visaConfirmation,
     });
   } catch (stagehandError) {
     // Even on a Stagehand failure, don't leave the Prava session dangling in
-    // awaiting_result. Report DECLINED so the session is closed cleanly.
+    // awaiting_result. Report DECLINED so the session is closed cleanly —
+    // but capture whether THAT report actually landed too.
+    let reportConfirmed = false;
+    let reportError: string | undefined;
     try {
-      await reportStatus(sessionId, txnRefId, "DECLINED");
-    } catch {
-      // best-effort
+      const report = await reportStatus(sessionId, txnRefId, "DECLINED");
+      reportConfirmed = report.confirmed;
+    } catch (reportErr) {
+      reportError = reportErr instanceof Error ? reportErr.message : String(reportErr);
+      console.error("[checkout/automate] report-status ALSO failed:", reportError);
     }
     await stagehand.close().catch(() => {});
     console.error("[checkout/automate] Stagehand error:", stagehandError);
     return NextResponse.json(
-      { error: stagehandError instanceof Error ? stagehandError.message : "Automation failed", statusReported: "DECLINED" },
+      {
+        error: stagehandError instanceof Error ? stagehandError.message : "Automation failed",
+        statusReported: reportConfirmed ? "DECLINED" : "UNKNOWN",
+        reportConfirmed,
+        reportError,
+      },
       { status: 500 }
     );
   }

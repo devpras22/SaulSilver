@@ -158,14 +158,34 @@ export async function pollPaymentResult(sessionId: string): Promise<PaymentResul
 
 // ── Report outcome (required — or transactions stick in awaiting_result) ─────
 
+export interface ReportStatusResult {
+  /** Did Prava acknowledge with `status: "confirmed"`? */
+  confirmed: boolean;
+  /** The status Prava echoed back (may differ from what we sent). */
+  txnStatus: "APPROVED" | "DECLINED";
+  /** Visa Confirmations API outcome — "SUCCESS" | "FAILURE" | undefined. */
+  visaConfirmation?: string;
+  /** Raw response body, for debugging when the dashboard contradicts us. */
+  raw: unknown;
+}
+
+/**
+ * Report APPROVED/DECLINED back to Prava. This is NOT fire-and-forget:
+ * it checks res.ok, reads + logs the body, and throws on a non-2xx so the
+ * caller can never silently believe a report landed. The previous version
+ * swallowed every failure — which is exactly how a DECLINED we "reported"
+ * still showed as Success/Completed on the dashboard.
+ */
 export async function reportStatus(
   sessionId: string,
   txnRefId: string,
   txnStatus: "APPROVED" | "DECLINED"
-): Promise<void> {
-  if (IS_MOCK) return;
+): Promise<ReportStatusResult> {
+  if (IS_MOCK) {
+    return { confirmed: true, txnStatus, visaConfirmation: "SUCCESS", raw: { mock: true } };
+  }
 
-  await fetch(`${BACKEND_URL}/v1/sessions/${sessionId}/report-status`, {
+  const res = await fetch(`${BACKEND_URL}/v1/sessions/${sessionId}/report-status`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -173,6 +193,34 @@ export async function reportStatus(
     },
     body: JSON.stringify({ txn_ref_id: txnRefId, txn_status: txnStatus }),
   });
+
+  const body = await res.json().catch(() => ({}));
+
+  // Always log — so the next time the dashboard contradicts us, the Vercel
+  // logs are the receipt (HTTP status + Prava status + visa_confirmation).
+  console.log(
+    `[prava/report-status] session=${sessionId} txn_ref=${txnRefId} ` +
+      `reported=${txnStatus} http=${res.status} ` +
+      `status=${(body as Record<string, unknown>)?.status ?? "?"} ` +
+      `txn_status=${(body as Record<string, unknown>)?.txn_status ?? "?"} ` +
+      `visa_confirmation=${(body as Record<string, unknown>)?.visa_confirmation ?? "?"}`
+  );
+
+  if (!res.ok) {
+    const msg =
+      (body as { error?: { message?: string } })?.error?.message ?? JSON.stringify(body);
+    throw new Error(`report-status failed (HTTP ${res.status}): ${msg}`);
+  }
+
+  return {
+    confirmed: (body as { status?: string })?.status === "confirmed",
+    txnStatus:
+      ((body as { txn_status?: "APPROVED" | "DECLINED" })?.txn_status as
+        | "APPROVED"
+        | "DECLINED") ?? txnStatus,
+    visaConfirmation: (body as { visa_confirmation?: string })?.visa_confirmation,
+    raw: body,
+  };
 }
 
 // ── List saved cards (for showing card-on-file) ──────────────────────────────
