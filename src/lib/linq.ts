@@ -17,9 +17,9 @@
 
 const API_KEY = process.env.LINQ_API_KEY;
 const BASE = process.env.LINQ_BASE_URL ?? "https://api.linqapp.com/api/partner/v3";
-const FROM = process.env.LINQ_FROM_NUMBER;
+export const FROM_NUMBER = process.env.LINQ_FROM_NUMBER;
 
-export const LINQ_CONFIGURED = Boolean(API_KEY && FROM);
+export const LINQ_CONFIGURED = Boolean(API_KEY && FROM_NUMBER);
 
 export interface MessagePart {
   type: "text" | "media" | "link" | "imessage_app";
@@ -81,7 +81,7 @@ async function linqFetch(path: string, body?: unknown, method = "POST") {
 
 /** Send a text, link, or multi-part message. */
 export async function sendMessage({ to, text, link, parts, chatId }: SendOptions) {
-  if (!FROM) throw new Error("LINQ_FROM_NUMBER not set");
+  if (!FROM_NUMBER) throw new Error("LINQ_FROM_NUMBER not set");
 
   const finalParts: MessagePart[] = parts ? [...parts] : [];
   if (!parts) {
@@ -93,11 +93,11 @@ export async function sendMessage({ to, text, link, parts, chatId }: SendOptions
   const path = chatId ? `/chats/${chatId}/messages` : "/chats";
   const payload = chatId
     ? {
-        from: FROM,
+        from: FROM_NUMBER,
         message: { parts: finalParts },
       }
     : {
-        from: FROM,
+        from: FROM_NUMBER,
         to: [to],
         message: { parts: finalParts },
       };
@@ -194,5 +194,5 @@ export function parseInbound(body: unknown): {
   const messageId = (data.id as string) ?? (data.message_id as string) ?? "";
 
   if (!from || !text) return null;
-  return { from, to: to ?? FROM ?? "", text, chatId, messageId };
+  return { from, to: to ?? FROM_NUMBER ?? "", text, chatId, messageId };
 }

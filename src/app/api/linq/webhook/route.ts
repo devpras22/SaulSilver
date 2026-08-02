@@ -7,7 +7,7 @@ import { matchProducts } from "@/lib/sommelier";
 import { productImage } from "@/lib/utils";
 import { productBrief, sortByPotency } from "@/lib/product-brief";
 import { createSession } from "@/lib/prava";
-import { loadConvo, saveConvo, type ConvoState } from "@/lib/imessage-store";
+import { loadConvo, saveConvo, claimMessageId, type ConvoState } from "@/lib/imessage-store";
 import { recordImessageSession } from "@/lib/imessage-sessions";
 
 /**
@@ -57,25 +57,26 @@ export async function POST(req: NextRequest) {
     const { from, text, chatId, messageId } = parsed;
     activeChatId = chatId;
 
-    // FETCH OR INITIALIZE PERSISTENT STATE (Supabase, not in-memory).
-    const state: ConvoState = await loadConvo(from);
-
-    // ── IDEMPOTENCY GUARD (the real "three bubbles" fix) ──
-    // This webhook does 10-20s of work (2 OpenAI calls, Senso, Supabase,
-    // image fetches, sendMessage) before returning 200. Linq times out and
-    // RETRIES while the first invocation is still running — each retry
-    // reprocessed the same inbound message and sent a fresh image+text,
-    // producing 2-3 identical responses. So: if this messageId was already
-    // marked as processed, return 200 instantly and do nothing. First fire
-    // marks + runs; concurrent retries see the mark and no-op.
-    if (messageId && state.lastInboundMessageId === messageId) {
-      console.log(`[linq/webhook] duplicate delivery ${messageId} — skipping (already processing)`);
+    // ── ATOMIC IDEMPOTENCY CLAIM (the actual triple-send fix) ──
+    // Root cause: this webhook does 10-20s of work (Supabase round-trips +
+    // 2 OpenAI calls + Senso + image fetches + sendMessage) before returning
+    // 200. Linq's webhook timeout is 10s, so it RETRIES while the first
+    // invocation is still running — each retry sent a fresh response → the
+    // user got 3 identical image+text bubbles. The OLD racy read-then-write
+    // guard (load → compare → save) let all concurrent retries through because
+    // they all read the stale state before any of them wrote.
+    //
+    // This claim is a single Postgres RPC (claim_imessage_message_id) that
+    // does a compare-and-set under a row lock. Only ONE concurrent caller wins;
+    // the rest get false and bail instantly. Race-proof.
+    const won = await claimMessageId(from, messageId);
+    if (!won) {
+      console.log(`[linq/webhook] duplicate ${messageId} lost the race — skipping`);
       return NextResponse.json({ ok: true, deduplicated: true });
     }
-    if (messageId) {
-      state.lastInboundMessageId = messageId;
-      await saveConvo(state); // mark IMMEDIATELY, before any slow work
-    }
+
+    // FETCH OR INITIALIZE PERSISTENT STATE (Supabase, not in-memory).
+    const state: ConvoState = await loadConvo(from);
 
     // Update chatId just in case it changed
     if (chatId) state.chatId = chatId;

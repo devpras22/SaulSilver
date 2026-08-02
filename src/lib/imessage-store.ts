@@ -42,12 +42,39 @@ type RecRow = {
   last_inbound_message_id: string | null;
 };
 
+/**
+ * Atomically claim a messageId for a sender. Returns true if THIS call won the
+ * claim (caller should process), false if another concurrent request already
+ * claimed it (caller should bail). Race-proof: a single Postgres RPC does the
+ * compare-and-set, so concurrent callers are serialized at the row lock.
+ *
+ * This is the actual fix for the triple-send. Linq's 10s webhook timeout fires
+ * retries while the first (slow) request is still running; the old racy
+ * read-then-write guard let all 3 through. This atomic version lets only one.
+ */
+export async function claimMessageId(phone: string, messageId: string): Promise<boolean> {
+  if (!messageId) return true; // nothing to dedupe on — allow
+  const admin = createServiceRoleClient();
+  // RPC: claim_imessage_message_id(phone, msg_id) → boolean. Defined in the
+  // 20260803_imessage_claim_rpc.sql migration. Does INSERT ... ON CONFLICT +
+  // a conditional UPDATE in one atomic round trip.
+  const { data, error } = await admin.rpc("claim_imessage_message_id", {
+    p_phone: phone,
+    p_message_id: messageId,
+  });
+  if (error) {
+    console.warn("[imessage-store] claim rpc failed, allowing:", error.message);
+    return true; // fail open — don't block the message on a DB hiccup
+  }
+  return Boolean(data);
+}
+
 /** Load a convo by sender phone, or return a fresh empty state. */
 export async function loadConvo(phone: string): Promise<ConvoState> {
   const admin = createServiceRoleClient();
   const { data, error } = await admin
     .from("imessage_convos")
-    .select("phone, chat_id, messages, pending_recs")
+    .select("phone, chat_id, messages, pending_recs, last_inbound_message_id")
     .eq("phone", phone)
     .maybeSingle();
 
