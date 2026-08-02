@@ -20,6 +20,7 @@ import {
   Loader2,
   ChevronDown,
   ChevronUp,
+  Zap,
 } from "lucide-react";
 import type {
   Brand,
@@ -662,7 +663,7 @@ export default function AppChat({
 
   return (
     <div className="flex h-[calc(100vh-57px)] flex-col overflow-hidden">
-      <div ref={scrollRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1 pb-10">
+      <div ref={scrollRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1 pb-10 scrollbar-hide">
         {(() => {
           const latestDashboardId = [...messages].reverse().find(m => m.kind === "dashboard")?.id;
           return messages.map((m) => (
@@ -755,10 +756,10 @@ export default function AppChat({
       </div>
 
       {/* Input bar */}
-      <div className="fixed inset-x-0 bottom-0 z-50 border-t border-border bg-noir pb-[env(safe-area-inset-bottom)]">
-        <div className="mx-auto max-w-4xl px-3 py-3 sm:px-6 sm:py-4">
+      <div className="fixed inset-x-0 bottom-0 z-50 pb-[calc(env(safe-area-inset-bottom)+16px)] sm:pb-6 pointer-events-none">
+        <div className="mx-auto max-w-4xl px-3 sm:px-6 pointer-events-auto">
           <div className="flex items-end gap-2">
-            <div className="flex flex-1 items-end gap-1 rounded-2xl border border-border bg-noir-card px-1.5 py-1 transition-colors focus-within:border-resin">
+            <div className="flex flex-1 items-end gap-1 rounded-[28px] border border-border/50 bg-noir-card/90 backdrop-blur-xl shadow-2xl px-2 py-1.5 transition-all focus-within:border-resin focus-within:bg-noir-card">
               <label className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-xl text-ink-muted transition-colors hover:bg-noir-raised hover:text-resin">
                 <input type="file" accept="image/*,.pdf" className="hidden" onChange={(e) => {
                   if (e.target.files?.[0]) handleUpload(e.target.files[0]);
@@ -1205,6 +1206,20 @@ function ProductCard({
            </div>
         </div>
 
+        <div className="px-4 py-4 flex justify-center w-full border-b border-white/5 bg-black/20">
+           <Button 
+             className="w-fit bg-resin/10 border border-resin/40 text-resin hover:bg-resin/20 backdrop-blur-md shadow-[0_4px_20px_rgba(202,255,10,0.1)] hover:shadow-[0_0_25px_rgba(202,255,10,0.3)] transition-all active:scale-95 px-5 py-5 rounded-2xl sm:rounded-full" 
+             size="sm" 
+             onClick={() => onPay(product, brand)}
+           >
+            <Zap className="h-4 w-4 mr-2 opacity-80 fill-current" />
+            <span className="font-medium tracking-wide">
+              Order — {formatINR(product.price_inr)}
+              {brand.prescription_required && <span className="ml-1.5 opacity-70 text-[11px] font-normal tracking-normal">(Doc Consult Included)</span>}
+            </span>
+          </Button>
+        </div>
+
         <div className="flex border-b border-white/10">
           {(["overview", "medical", "safety"] as const).map(t => (
             <button 
@@ -1298,20 +1313,6 @@ function ProductCard({
               )}
             </div>
           )}
-        </div>
-
-        <div className="p-4 pt-0 flex justify-center w-full mt-2">
-           <Button 
-             className="w-fit bg-resin/10 border border-resin/40 text-resin hover:bg-resin/20 backdrop-blur-md shadow-[0_4px_20px_rgba(202,255,10,0.1)] hover:shadow-[0_0_25px_rgba(202,255,10,0.3)] transition-all active:scale-95 px-5 py-5 rounded-full" 
-             size="sm" 
-             onClick={() => onPay(product, brand)}
-           >
-            <Shield className="h-4 w-4 mr-2 opacity-80" />
-            <span className="font-medium tracking-wide">
-              Order — {formatINR(product.price_inr)}
-              {brand.prescription_required && <span className="ml-1.5 opacity-70 text-[11px] font-normal tracking-normal">(Doc Consult Included)</span>}
-            </span>
-          </Button>
         </div>
       </CardContent>
     </Card>

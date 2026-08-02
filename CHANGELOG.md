@@ -18,7 +18,9 @@
 - **Conversational UX (Website & SMS):** Rewrote Saul's core LLM prompt to stop strictly interrogating users for tolerance and ratio. Saul now gracefully handles partial requests (e.g. "I need a gummy for sleep") and searches immediately.
 - **Dynamic Reasoning (Website):** Saul now verbally speaks a dynamic summary citing the Senso Instagram/trust quotes in a text bubble right before sliding out the product cards. 
 - **Rich iMessage Links (Linq):** Updated the Linq SMS webhook to send native iMessage App Attachments (using `type: "link"`) instead of raw text blobs, and enriched the SMS payload to include the Senso trust quotes.
-- **UI/UX Polish:** Increased product card height on desktop for better presence and upgraded the desktop chat view to use the swipeable `MobileRolodex` layout. The Order CTA button was restyled to a centered, glassmorphic design that cleanly shows both price and medical consultation status.
+- **UI/UX Polish:** Increased product card height on desktop for better presence and upgraded the desktop chat view to use the swipeable `MobileRolodex` layout. The Order button was ripped out of the bottom of the card and placed prominently at the top, directly beneath the hero image. It is styled as a sleek glassmorphic pill that tightly wraps the text on desktop. 
+- **Chat Interface:** Removed the double scrollbar bug on desktop and restyled the chat input box into a floating, rounded pill by stripping away the clunky footer container.
+- **Mobile Navbar:** Redesigned the top mobile navbar into a cleaner single-row layout with the address centered. The "1Card" / Prava button was moved out of the top bar and placed natively inside the Avatar dropdown menu under the label "Wallet".
 - **Senso Trust UI:** Extracted the 500-word Markdown Senso Trust Analysis from the `reasons` badge pill. It now renders beautifully with a lightweight native React markdown parser inside a collapsed-by-default container within the Overview tab.
 
 ## 2026-08-02

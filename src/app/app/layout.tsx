@@ -40,23 +40,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </div>
         </div>
 
-        {/* ── MOBILE: two rows ──
-            Row 1: brand · wallet · avatar
-            Row 2: address (full width, its own line) */}
-        <div className="sm:hidden">
-          <div className="flex w-full items-center justify-between px-3 py-2.5">
-            <div className="flex items-center gap-2">
-              <Link href="/" className="transition-opacity hover:opacity-80">
-                <Wordmark />
-              </Link>
-            </div>
-            <div className="flex items-center gap-2">
-              <WalletButton />
-              <UserMenu email={user.email ?? ""} />
-            </div>
+        {/* ── MOBILE: single row (brand · address · avatar) ── */}
+        <div className="sm:hidden flex w-full items-center justify-between px-3 py-2.5">
+          <div className="flex shrink-0 items-center">
+            <Link href="/" className="transition-opacity hover:opacity-80">
+              <Wordmark />
+            </Link>
           </div>
-          <div className="w-full px-3 pb-2.5">
+          <div className="flex min-w-0 flex-1 justify-center px-1">
             <HeaderAddress addresses={addresses} activeAddressId={activeAddressId} />
+          </div>
+          <div className="flex shrink-0 items-center">
+            <UserMenu email={user.email ?? ""} />
           </div>
         </div>
       </header>

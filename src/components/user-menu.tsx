@@ -13,7 +13,9 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, Mail, Loader2, AlertTriangle, History, Package, Plus } from "lucide-react";
+import { LogOut, Mail, Loader2, AlertTriangle, History, Package, Plus, Wallet } from "lucide-react";
+import { WalletModal, type SavedCard } from "@/components/wallet-modal";
+import { useCallback, useEffect } from "react";
 
 /**
  * UserMenu — the profile avatar in the header.
@@ -25,6 +27,22 @@ export function UserMenu({ email }: { email: string }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [walletOpen, setWalletOpen] = useState(false);
+  const [cards, setCards] = useState<SavedCard[]>([]);
+
+  const refreshCards = useCallback(async () => {
+    try {
+      const res = await fetch("/api/wallet/cards");
+      const data = await res.json();
+      setCards(data.cards ?? []);
+    } catch {
+      setCards([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshCards();
+  }, [refreshCards]);
 
   const initial = email?.[0]?.toUpperCase() ?? "?";
 
@@ -92,6 +110,16 @@ export function UserMenu({ email }: { email: string }) {
               Orders
             </Link>
           </DropdownMenuItem>
+          <DropdownMenuItem 
+            onSelect={(e) => {
+              e.preventDefault();
+              setWalletOpen(true);
+            }} 
+            className="sm:hidden flex items-center gap-2 cursor-pointer"
+          >
+            <Wallet className="h-4 w-4" />
+            Wallet
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
             onSelect={(e) => {
@@ -142,6 +170,13 @@ export function UserMenu({ email }: { email: string }) {
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
+
+      <WalletModal
+        open={walletOpen}
+        onOpenChange={setWalletOpen}
+        cards={cards}
+        onCardsChanged={refreshCards}
+      />
     </>
   );
 }
