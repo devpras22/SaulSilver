@@ -987,11 +987,18 @@ function CatalogList({
             </button>
             
             {isOpen && (
-              <div className="flex snap-x snap-mandatory overflow-x-auto pb-4 pt-4 pl-8 sm:pl-4 pr-6 scrollbar-hide border-t border-border/30 -space-x-12 sm:space-x-3">
-                {vibe.products.map(m => (
-                  <MenuProductCard key={m.product.id} match={m} onPay={onPay} />
-                ))}
-              </div>
+              <>
+                {/* DESKTOP GRID */}
+                <div className="hidden sm:flex overflow-x-auto pb-4 pt-4 pl-4 pr-6 scrollbar-hide border-t border-border/30 space-x-3">
+                  {vibe.products.map(m => (
+                    <MenuProductCard key={m.product.id} match={m} onPay={onPay} />
+                  ))}
+                </div>
+                {/* MOBILE ROLODEX */}
+                <div className="block sm:hidden w-full px-4 pt-4 pb-2 border-t border-border/30">
+                  <MobileRolodex matches={vibe.products} onPay={onPay} />
+                </div>
+              </>
             )}
           </div>
         );
@@ -1363,26 +1370,29 @@ function BrandReport({
       {/* MOBILE ROLODEX PRODUCTS (Outside the text bubble, hidden on desktop) */}
       {expanded && products.length > 0 && (
         <div className="block sm:hidden w-full pl-11 pr-4 mt-1">
-          <MobileRolodex products={products} brand={brand} onPay={onPay} />
+          <MobileRolodex 
+            matches={products.map(p => ({ product: p, brand, score: 1, reasons: [], warnings: [] }))} 
+            onPay={onPay} 
+          />
         </div>
       )}
     </div>
   );
 }
 
-function MobileRolodex({ products, brand, onPay }: { products: CannabisProduct[], brand: Brand, onPay: any }) {
+function MobileRolodex({ matches, onPay }: { matches: ProductMatch[], onPay: any }) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
 
   const nextCard = (e?: React.MouseEvent) => {
     e?.stopPropagation();
     setExpandedIndex(null);
-    setActiveIndex((prev) => (prev + 1) % products.length);
+    setActiveIndex((prev) => (prev + 1) % matches.length);
   };
   
   const prevCard = () => {
     setExpandedIndex(null);
-    setActiveIndex((prev) => (prev - 1 + products.length) % products.length);
+    setActiveIndex((prev) => (prev - 1 + matches.length) % matches.length);
   };
 
   const handlers = useSwipeable({
@@ -1398,19 +1408,19 @@ function MobileRolodex({ products, brand, onPay }: { products: CannabisProduct[]
   return (
     <div className="w-full">
       <div className="flex justify-between items-end mb-3">
-        <p className="text-xs uppercase tracking-wider text-white/50">{products.length} product{products.length > 1 ? "s" : ""}</p>
-        {products.length > 1 && (
+        <p className="text-xs uppercase tracking-wider text-white/50">{matches.length} product{matches.length > 1 ? "s" : ""}</p>
+        {matches.length > 1 && (
           <button onClick={nextCard} className="text-[10px] text-resin font-medium bg-resin/10 px-2 py-0.5 rounded border border-resin/30 uppercase tracking-widest">
-            Next {products.length - 1} ➔
+            Next {matches.length - 1} ➔
           </button>
         )}
       </div>
       <div {...handlers} className={`relative w-full transition-all duration-300 ${containerHeight}`}>
-        {products.map((p, i) => {
+        {matches.map((m, i) => {
           let diff = i - activeIndex;
-          if (diff < 0) diff += products.length;
+          if (diff < 0) diff += matches.length;
 
-          if (diff > 2 && products.length > 3) return null;
+          if (diff > 2 && matches.length > 3) return null;
 
           const isTop = diff === 0;
           
@@ -1429,7 +1439,7 @@ function MobileRolodex({ products, brand, onPay }: { products: CannabisProduct[]
             >
               <div className="shadow-[20px_0_30px_-10px_rgba(0,0,0,0.6)] rounded-xl">
                 <MenuProductCard 
-                  match={{ product: p, brand, score: 1, reasons: [], warnings: [] }} 
+                  match={m} 
                   onPay={onPay} 
                   isExpanded={expandedIndex === i}
                   onToggleExpand={(exp) => setExpandedIndex(exp ? i : null)}

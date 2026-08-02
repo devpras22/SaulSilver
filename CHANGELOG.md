@@ -13,6 +13,8 @@
 - **Database Sync:** Discovered missing "Chill Golden" (250mg) product for Polyherbs, added it to the local seed script, and pushed the update directly to the live Supabase database.
 - **Mobile UI Rewrite:** Built a fully responsive stacked Rolodex UI for the mobile product list. Cards physically fan out to the right and intuitively auto-collapse during horizontal swiping.
 - **UI Polish & ETA Formatting:** Fixed "2166 minutes" delivery times on the order history page and in the conversational UI by formatting minutes dynamically into hours/days. Reordered the red flags widget so critical safety warnings appear first.
+- **Catalog Layout:** Refactored the `MobileRolodex` component to support mixed-brand arrays and deployed it across the "Find my gummy" catalog categories on mobile, replacing the older overlapping grid.
+- **Footer Updates:** Added Linq to the "Powered by" footer sponsorships.
 
 ## 2026-08-02
 - **Critical Fix — Card Rendering Regression:** Removed an early `return` in `MessageBubble` (introduced by the UI overhaul) that was rendering *every* assistant message as a plain text bubble. Restored the Location Verified card, PriorityPicker, Prava payment iframe (PaymentCard), ConfirmationCard, RecommendationCard, and AgentDashboard.

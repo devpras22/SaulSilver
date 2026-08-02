@@ -374,6 +374,7 @@ export default function Home() {
             <br className="sm:hidden" />
             {" "}Powered by{" "}
             <a href="https://prava.space" target="_blank" rel="noopener noreferrer" className="text-resin-light underline underline-offset-4 transition-colors hover:text-resin">Prava</a>,{" "}
+            <a href="https://linqapp.com" target="_blank" rel="noopener noreferrer" className="text-resin-light underline underline-offset-4 transition-colors hover:text-resin">Linq</a>,{" "}
             <a href="https://senso.ai" target="_blank" rel="noopener noreferrer" className="text-resin-light underline underline-offset-4 transition-colors hover:text-resin">Senso</a> &amp;{" "}
             <a href="https://openai.com" target="_blank" rel="noopener noreferrer" className="text-resin-light underline underline-offset-4 transition-colors hover:text-resin">OpenAI</a>.
           </p>
