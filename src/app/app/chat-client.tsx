@@ -797,7 +797,10 @@ export default function AppChat({
         }
       } else {
         const d = await res.json().catch(() => ({}));
-        pushAssistant(`Couldn't save that number (${d.error ?? "unknown error"}). Try again?`, "text");
+        const reason = typeof d.error === "string" && d.error.trim()
+          ? d.error
+          : "unknown error";
+        pushAssistant(`Couldn't save that number (${reason}). Try again?`, "text");
       }
     } catch {
       pushAssistant("Couldn't reach the server to save your number. Check your connection.", "text");
@@ -818,7 +821,10 @@ export default function AppChat({
         pushAssistant("Got it — passing the OTP to the checkout now. Hang tight while it verifies and loads the card step.", "text");
       } else {
         const d = await res.json().catch(() => ({}));
-        pushAssistant(`Couldn't submit that OTP (${d.error ?? "unknown error"}). Try again?`, "text");
+        const reason = typeof d.error === "string" && d.error.trim()
+          ? d.error
+          : "unknown error";
+        pushAssistant(`Couldn't submit that OTP (${reason}). Try again?`, "text");
       }
     } catch {
       pushAssistant("Couldn't reach the server to submit the OTP. Check your connection and try again.", "text");

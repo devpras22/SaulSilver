@@ -24,20 +24,23 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "that doesn't look like a valid phone number" }, { status: 400 });
     }
 
+    // Store as user_metadata ONLY — not the auth `phone` field. The auth
+    // `phone` field enrolls phone-OTP auth (sends a verification code), which
+    // we don't want; we just need a stored contact number for Shopflo's SMS.
     const { error } = await supabase.auth.updateUser({
-      phone: cleanPhone,
       data: { ...user.user_metadata, phone: cleanPhone },
     });
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      const msg = error.message || JSON.stringify(error) || "unknown error";
+      console.error("[profile/phone] updateUser error:", msg);
+      return NextResponse.json({ error: msg }, { status: 400 });
     }
 
     return NextResponse.json({ ok: true, phone: cleanPhone });
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Failed to save phone" },
-      { status: 500 }
-    );
+    const msg = e instanceof Error ? e.message : "Failed to save phone";
+    console.error("[profile/phone] exception:", msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
