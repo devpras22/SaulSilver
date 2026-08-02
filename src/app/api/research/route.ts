@@ -1,45 +1,45 @@
 import { NextRequest, NextResponse } from "next/server";
-import { researchBrand, IS_MOCK_RESEARCH } from "@/lib/research";
+import { researchBrand, IS_MOCK_RESEARCH, slugify } from "@/lib/research";
 import { createServiceRoleClient } from "@/lib/supabase/server";
+import type { Brand, CannabisProduct, ResearchStatus } from "@/lib/types";
 
 /**
  * POST /api/research
  *
- * Researches a cannabis brand and upserts it into the catalog.
- * This is the self-populating engine: a user names a brand the catalog
- * doesn't know → the agent researches it live → caches in Supabase.
+ * The living-catalog engine. Given a brand name it produces ONE of five honest
+ * outcomes (returned as `status`), so the client renders a distinct card:
  *
- * Body: { brandName: string, website?: string }
- * Returns: { brand, products, research, mock, cached }
+ *   new_brand_no_gummies      — legit brand, but they sell oils/topicals only
+ *   new_brand_added           — full research, brand + gummies saved
+ *   existing_brand_refreshed  — known brand, genuinely-new gummies added
+ *   existing_brand_unchanged  — known brand, nothing changed (freshness check)
+ *   cached                    — served from the 7-day cache (no live crawl)
  *
- * Server-side only. Uses the service-role client to write the public catalog
- * (brands/products/brand_research are public-read, service-write).
+ * Body: { brandName: string, website?: string, forceRefresh?: boolean }
+ * Returns: { status, brand, products, research, delta?, mock, cached }
+ *
+ * SAFETY: refresh is ADDITIVE ONLY — never delete/overwrite existing products.
+ * The 12 pre-seeded brands carry hand-curated detail we must not destroy.
  */
 export async function POST(req: NextRequest) {
   try {
-    const { brandName, website } = await req.json();
+    const { brandName, website, forceRefresh } = await req.json();
     if (!brandName || typeof brandName !== "string") {
       return NextResponse.json({ error: "brandName is required" }, { status: 400 });
     }
 
     const supabase = createServiceRoleClient();
+    const slug = slugify(brandName);
 
     // ── Check if already cached (don't re-research on every hit) ──
-    const slug = brandName
-      .toLowerCase()
-      .trim()
-      .replace(/[^a-z0-9\s-]/g, "")
-      .replace(/[\s_-]+/g, "-")
-      .replace(/^-+|-+$/g, "");
-
     const { data: existing } = await supabase
       .from("brands")
       .select("id, name, last_researched")
       .eq("id", slug)
       .maybeSingle();
 
-    // If researched within the last 7 days, return the cache.
-    if (existing?.last_researched) {
+    // Serve the cache unless the caller explicitly wants a live freshness check.
+    if (!forceRefresh && existing?.last_researched) {
       const age = Date.now() - new Date(existing.last_researched).getTime();
       if (age < 7 * 24 * 60 * 60 * 1000) {
         const [{ data: cachedBrand }, { data: cachedProducts }, { data: cachedResearch }] =
@@ -55,6 +55,7 @@ export async function POST(req: NextRequest) {
               .maybeSingle(),
           ]);
         return NextResponse.json({
+          status: "cached" as ResearchStatus,
           brand: cachedBrand,
           products: cachedProducts ?? [],
           research: cachedResearch,
@@ -64,71 +65,61 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ── Gather raw context via web search ──
+    // ── Gather raw context (now footer-aware for licence extraction) ──
     const context = await gatherContext(brandName, website);
 
     // ── Run the research agent ──
     const result = await researchBrand({ brandName, context, knownWebsite: website });
 
-    // ── Upsert brand + products + research to Supabase ──
-    await supabase
-      .from("brands")
-      .upsert(
-        {
-          id: result.brand.id,
-          name: result.brand.name,
-          website: result.brand.website,
-          tagline: result.brand.tagline,
-          category: result.brand.category,
-          region: result.brand.region,
-          rail: result.brand.rail,
-          marketplaces: result.brand.marketplaces ?? null,
-          legal_status: result.brand.legal_status,
-          prescription_required: result.brand.prescription_required,
-          doctor_routing: result.brand.doctor_routing,
-          support_email: result.brand.support_email ?? null,
-          instagram_handle: result.brand.instagram_handle ?? null,
-          instagram_followers: result.brand.instagram_followers ?? null,
-          instagram_engagement: result.brand.instagram_engagement ?? null,
-          trust_score: result.brand.trust_score,
-          verified: result.brand.verified,
-          last_researched: result.brand.last_researched,
-          description: result.brand.description,
-          packaging_notes: result.brand.packaging_notes,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "id" }
+    const isNewBrand = !existing;
+    const isNoGummies = result.gummyProducts.length === 0;
+
+    // ── Compute the outcome status + decide what to persist ──
+    let status: ResearchStatus;
+    let delta: string[] | undefined; // names of genuinely-new gummies added (case 3)
+
+    if (isNewBrand) {
+      // Cases 1 & 2.
+      status = isNoGummies ? "new_brand_no_gummies" : "new_brand_added";
+
+      // Upsert the brand row (always — a no-gummies brand is still vetted + cached).
+      await upsertBrand(supabase, result.brand);
+
+      if (!isNoGummies) {
+        // Case 2: new brand with gummies → insert its gummy products.
+        await insertProducts(supabase, result.brand.id, result.gummyProducts);
+      }
+      // Case 1 (no gummies): insert NOTHING to products. otherProducts is in
+      // research.findings so the decline card can render what they DO sell.
+    } else {
+      // Existing brand → freshness check. Compute the delta of gummy names the
+      // live site now lists vs what's already seeded. ADDITIVE ONLY.
+      const { data: seededProducts } = await supabase
+        .from("products")
+        .select("name")
+        .eq("brand_id", result.brand.id);
+      const seededNames = new Set((seededProducts ?? []).map((p) => normalizeName(p.name)));
+
+      const newGummies = result.gummyProducts.filter(
+        (p) => !seededNames.has(normalizeName(p.name))
       );
 
-    // Replace products: delete old, insert new (cleaner than per-row upsert with FK)
-    if (result.products.length > 0) {
-      await supabase.from("products").delete().eq("brand_id", result.brand.id);
-      const { error: prodError } = await supabase.from("products").insert(
-        result.products.map((p) => ({
-          brand_id: p.brand_id,
-          name: p.name,
-          variant: p.variant ?? null,
-          cannabinoids: p.cannabinoids ?? {},
-          ratio: p.ratio ?? null,
-          spectrum: p.spectrum ?? null,
-          effect_tags: p.effect_tags,
-          dose_level: p.dose_level,
-          onset_minutes: p.onset_minutes ?? null,
-          duration_hours: p.duration_hours ?? null,
-          flavor: p.flavor ?? null,
-          pack_count: p.pack_count,
-          price_inr: p.price_inr,
-          in_stock: p.in_stock,
-          product_url: p.product_url ?? null,
-          description: p.description ?? null,
-        }))
-      );
-      if (prodError) {
-        console.error("[/api/research] product insert failed:", prodError.message);
+      if (newGummies.length === 0) {
+        // Case 4: nothing changed. Don't touch products at all. We still refresh
+        // the brand row + append a research row so last_researched is honest.
+        status = "existing_brand_unchanged";
+        await upsertBrand(supabase, result.brand);
+      } else {
+        // Case 3: genuinely-new gummies. INSERT ONLY — never delete/overwrite.
+        status = "existing_brand_refreshed";
+        delta = newGummies.map((p) => p.name);
+        await upsertBrand(supabase, result.brand);
+        await insertProducts(supabase, result.brand.id, newGummies);
       }
     }
 
-    // Insert the research audit trail (always append — history matters)
+    // Always append the research audit trail (history matters — a judge can see
+    // the brand was re-checked).
     await supabase.from("brand_research").insert({
       brand_id: result.brand.id,
       query: result.research.query,
@@ -139,9 +130,13 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({
+      status,
       brand: result.brand,
-      products: result.products,
+      // The client wants the FULL product list for the dashboard card (existing
+      // + newly added). For no-gummies, this is correctly empty.
+      products: result.gummyProducts,
       research: result.research,
+      delta,
       mock: IS_MOCK_RESEARCH,
       cached: false,
     });
@@ -153,39 +148,133 @@ export async function POST(req: NextRequest) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PERSISTENCE HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function upsertBrand(supabase: ReturnType<typeof createServiceRoleClient>, brand: Brand) {
+  await supabase
+    .from("brands")
+    .upsert(
+      {
+        id: brand.id,
+        name: brand.name,
+        website: brand.website,
+        tagline: brand.tagline,
+        category: brand.category,
+        region: brand.region,
+        rail: brand.rail,
+        marketplaces: brand.marketplaces ?? null,
+        legal_status: brand.legal_status,
+        prescription_required: brand.prescription_required,
+        doctor_routing: brand.doctor_routing,
+        support_email: brand.support_email ?? null,
+        instagram_handle: brand.instagram_handle ?? null,
+        instagram_followers: brand.instagram_followers ?? null,
+        instagram_engagement: brand.instagram_engagement ?? null,
+        trust_score: brand.trust_score,
+        verified: brand.verified,
+        last_researched: brand.last_researched,
+        description: brand.description,
+        packaging_notes: brand.packaging_notes,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "id" }
+    );
+}
+
+/** INSERT ONLY — never delete. Used for both new brands and additive refresh. */
+async function insertProducts(
+  supabase: ReturnType<typeof createServiceRoleClient>,
+  brandId: string,
+  products: CannabisProduct[]
+) {
+  if (products.length === 0) return;
+  const { error } = await supabase.from("products").insert(
+    products.map((p) => ({
+      brand_id: brandId,
+      name: p.name,
+      variant: p.variant ?? null,
+      cannabinoids: p.cannabinoids ?? {},
+      ratio: p.ratio ?? null,
+      spectrum: p.spectrum ?? null,
+      effect_tags: p.effect_tags,
+      dose_level: p.dose_level,
+      onset_minutes: p.onset_minutes ?? null,
+      duration_hours: p.duration_hours ?? null,
+      flavor: p.flavor ?? null,
+      pack_count: p.pack_count,
+      price_inr: p.price_inr,
+      in_stock: p.in_stock,
+      product_url: p.product_url ?? null,
+      description: p.description ?? null,
+    }))
+  );
+  if (error) {
+    console.error("[/api/research] product insert failed:", error.message);
+  }
+}
+
+/** Normalize a product name for delta comparison (case/whitespace/punct-insensitive). */
+function normalizeName(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]/g, "").trim();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // CONTEXT GATHERING — fetch raw snippets about the brand
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Gather raw research context about a brand.
- * Crawls the homepage + likely product/collection pages and extracts readable text.
- * This is what the agent parses to extract cannabinoid mg, prices, pack counts.
+ * Crawls the homepage + product/collection pages + the footer/contact/about
+ * pages (where AYUSH licence numbers actually live as TEXT — see lessons §5).
+ * Returns an array of text snippets; the FIRST line of each is its URL.
  */
 async function gatherContext(brandName: string, website?: string): Promise<string[]> {
   const snippets: string[] = [];
   if (!website) return snippets;
 
-  // Pages most likely to contain product detail (Shopify/WooCommerce/most D2C).
-  const candidates = [
+  const root = website.replace(/\/$/, "");
+
+  // Product/collection pages (Shopify/WooCommerce/most D2C).
+  const productCandidates = [
     website,
-    `${website.replace(/\/$/, "")}/collections/all`,
-    `${website.replace(/\/$/, "")}/collections/gummies`,
-    `${website.replace(/\/$/, "")}/products`,
-    `${website.replace(/\/$/, "")}/collections`,
-    `${website.replace(/\/$/, "")}/shop`,
+    `${root}/collections/all`,
+    `${root}/collections/gummies`,
+    `${root}/products`,
+    `${root}/collections`,
+    `${root}/shop`,
   ];
 
-  // Fetch homepage + first 2 collection pages that resolve.
-  const fetched = await Promise.allSettled(
-    candidates.slice(0, 3).map((url) => fetchPage(url))
-  );
+  // Footer/contact/about pages — this is where licence NUMBERS live as text,
+  // not in product images. Fetching these is the fix for the licence-in-image
+  // mistake (lessons §5: grep the literal string "Licence Number:").
+  const footerCandidates = [`${root}/contact`, `${root}/about`, `${root}/pages/about-us`, `${root}/policies/privacy-policy`, `${root}/pages/contact-us`];
 
+  // Fetch homepage + first 2 product/collection pages that resolve.
+  const productFetched = await Promise.allSettled(
+    productCandidates.slice(0, 3).map((url) => fetchPage(url))
+  );
   let pagesFetched = 0;
-  for (let i = 0; i < fetched.length && pagesFetched < 3; i++) {
-    const r = fetched[i];
+  for (let i = 0; i < productFetched.length && pagesFetched < 3; i++) {
+    const r = productFetched[i];
     if (r.status === "fulfilled" && r.value) {
       snippets.push(r.value);
       pagesFetched++;
+    }
+  }
+
+  // Footer pages: fetch up to 2, then extract a LICENCE EXTRACT block from each.
+  // The block is fed to OpenAI explicitly so it doesn't have to guess whether a
+  // licence is in text or an image.
+  const footerFetched = await Promise.allSettled(
+    footerCandidates.slice(0, 3).map((url) => fetchPage(url))
+  );
+  let footerAdded = 0;
+  for (const r of footerFetched) {
+    if (footerAdded >= 2) break;
+    if (r.status === "fulfilled" && r.value) {
+      snippets.push(r.value);
+      footerAdded++;
     }
   }
 
@@ -205,7 +294,7 @@ async function gatherContext(brandName: string, website?: string): Promise<strin
   return snippets;
 }
 
-/** Fetch a URL, extract readable text + structured data for the agent. */
+/** Fetch a URL, extract readable text + structured data + a licence extract for the agent. */
 async function fetchPage(url: string): Promise<string | null> {
   try {
     const res = await fetch(url, {
@@ -234,7 +323,17 @@ async function fetchPage(url: string): Promise<string | null> {
     // 3. Capture mg/dosage patterns — "175mg", "5mg THC", "100 mg CBD".
     const mgMatches = html.match(/\b[0-9]{1,4}\s?mg\b(?:\s?(?:THC|CBD|CBN|CBG|Vijaya|cannabis))?/gi) ?? [];
 
-    // 4. Strip to readable text.
+    // 4. LICENCE EXTRACT — literal-string grep for "Licence Number:" (lessons §5).
+    //    This is the fix for the licence-in-image mistake: we surface the actual
+    //    footer text so OpenAI copies it verbatim rather than inferring from a badge.
+    const licenceMatches = html.match(/Licen[cs]e\s*Number[^<>]{0,80}/gi) ?? [];
+    // Also catch AYUSH registration patterns without the "Licence Number" prefix.
+    const ayushMatches = html.match(/AYUSH[^<>]{0,60}?(?:[A-Z]{2,4}\s*[\-–/]?\s*\d{2,5}\/?\d{0,4})/gi) ?? [];
+
+    // 5. Coming-soon / out-of-stock signals — drives the freshness check.
+    const comingSoon = html.match(/\b(coming soon|sold out|out of stock|notify me|available soon|pre-?order)\b/gi) ?? [];
+
+    // 6. Strip to readable text.
     const text = html
       .replace(/<script[\s\S]*?<\/script>/gi, "")
       .replace(/<style[\s\S]*?<\/style>/gi, "")
@@ -247,6 +346,12 @@ async function fetchPage(url: string): Promise<string | null> {
     if (ldBlocks.length > 0) parts.push(`Structured product data:\n${ldBlocks.join("\n")}`);
     if (priceMatches.length > 0) parts.push(`Prices found: ${[...new Set(priceMatches)].slice(0, 15).join(", ")}`);
     if (mgMatches.length > 0) parts.push(`Dosage/mg found: ${[...new Set(mgMatches)].slice(0, 15).join(", ")}`);
+    if (licenceMatches.length > 0 || ayushMatches.length > 0) {
+      parts.push(`LICENCE EXTRACT (footer text — copy verbatim into licence_from_footer): ${[...licenceMatches, ...ayushMatches].slice(0, 5).join(" | ")}`);
+    }
+    if (comingSoon.length > 0) {
+      parts.push(`AVAILABILITY SIGNALS (coming soon / sold out detected): ${[...new Set(comingSoon.map((s) => s.toLowerCase()))].slice(0, 8).join(", ")}`);
+    }
     parts.push(text);
 
     return parts.join("\n\n");
@@ -266,4 +371,3 @@ function extractProductLinks(html: string, baseSite: string): string[] {
   }
   return [...new Set(links)];
 }
-

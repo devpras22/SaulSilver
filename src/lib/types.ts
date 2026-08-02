@@ -105,9 +105,25 @@ export interface ChatMessage {
     | "dashboard"
     | "geo"
     | "priority"
-    | "address_choice";
+    | "address_choice"
+    | "research_status";
   data?: unknown;
 }
+
+/**
+ * Outcome of a live research run. The client renders a distinct card per status:
+ *  - new_brand_no_gummies   → honest decline card ("they sell oils, not gummies")
+ *  - new_brand_added        → full brand report (the original live path)
+ *  - existing_brand_refreshed → brand report + "N new added" badge
+ *  - existing_brand_unchanged → one-line "still current" confidence card
+ *  - cached                 → brand report served from the 7-day cache
+ */
+export type ResearchStatus =
+  | "new_brand_no_gummies"
+  | "new_brand_added"
+  | "existing_brand_refreshed"
+  | "existing_brand_unchanged"
+  | "cached";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CANNABIS DOMAIN — the SaulSilver catalog + matching types
@@ -216,6 +232,17 @@ export interface BrandResearch {
     reviews_summary?: string;
     red_flags?: string[];
     summary: string;
+    /** Auditable deduction breakdown for the trust_score (manual seeds). */
+    trust_breakdown?: {
+      start: number;
+      deductions: Record<string, number>;
+      final: number;
+    };
+    /** Live-research catalog classification (cases 1/3/4). */
+    sells_gummies?: boolean;
+    non_gummy_summary?: string;
+    other_products?: { name: string; type: string; status: string; description?: string }[];
+    coming_soon_gummies?: { name: string; status: string; description?: string }[];
   };
   sources: string[];
   trust_score: number;

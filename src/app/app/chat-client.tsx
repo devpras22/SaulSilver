@@ -364,7 +364,10 @@ export default function AppChat({
     }
   };
 
-  // ── Verify a brand (the trust-check door) ──
+  // ── Verify a brand (the living-catalog door) ──
+  // One endpoint, five outcomes. The status field drives which card renders:
+  //   no-gummies / unchanged  → research_status card (honest decline / freshness)
+  //   added / refreshed / cached → dashboard card (the full brand report)
   const verifyBrand = async (brandName: string) => {
     setBusy(true);
     pushAssistant(`Looking into ${brandName}…`, "thinking");
@@ -372,13 +375,35 @@ export default function AppChat({
       const res = await fetch("/api/research", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ brandName }),
+        // forceRefresh so "is X's new gummy out yet?" actually re-crawls live
+        // instead of returning the 7-day cache. The freshness demo needs this.
+        body: JSON.stringify({ brandName, forceRefresh: true }),
       });
       const data = await res.json();
       setMessages((m) => m.filter((msg) => msg.kind !== "thinking"));
 
       if (data.error) throw new Error(data.error);
-      pushAssistant("", "dashboard", { brand: data.brand, products: data.products, research: data.research });
+
+      const status: string = data.status ?? "new_brand_added";
+      if (status === "new_brand_no_gummies" || status === "existing_brand_unchanged") {
+        // Honest-decline / freshness cards. data carries the brand + findings
+        // so the card can show the verdict + what they DO make.
+        pushAssistant("", "research_status", {
+          status,
+          brand: data.brand,
+          research: data.research,
+          delta: data.delta,
+        });
+      } else {
+        // added / refreshed / cached → the full brand report. Pass delta so the
+        // dashboard can show a "just added N new" badge on a refresh.
+        pushAssistant("", "dashboard", {
+          brand: data.brand,
+          products: data.products,
+          research: data.research,
+          delta: data.delta,
+        });
+      }
     } catch (e) {
       setMessages((m) => m.filter((msg) => msg.kind !== "thinking"));
       pushAssistant(`Couldn't research ${brandName}: ${e instanceof Error ? e.message : "unknown error"}.`, "text");
@@ -667,12 +692,13 @@ export default function AppChat({
         {(() => {
           const latestDashboardId = [...messages].reverse().find(m => m.kind === "dashboard")?.id;
           return messages.map((m) => (
-            <MessageBubble 
-              key={m.id} 
-              message={m} 
-              onPay={runPayment} 
-              onVerify={verifyBrand} 
-              isLatestDashboard={m.id === latestDashboardId} 
+            <MessageBubble
+              key={m.id}
+              message={m}
+              onPay={runPayment}
+              onVerify={verifyBrand}
+              onMatch={(text) => handleSend(text)}
+              isLatestDashboard={m.id === latestDashboardId}
             />
           ));
         })()}
@@ -853,11 +879,14 @@ function MessageBubble({
   message,
   onPay,
   onVerify,
+  onMatch,
   isLatestDashboard = true,
 }: {
   message: ChatMessage;
   onPay: (product: CannabisProduct, brand: Brand) => void;
   onVerify: (brandName: string) => void;
+  /** Send a chat message (used by the "find me a gummy instead" CTA). */
+  onMatch: (text: string) => void;
   isLatestDashboard?: boolean;
 }) {
   if (message.role === "user") {
@@ -905,19 +934,38 @@ function MessageBubble({
     );
   }
 
+  if (message.kind === "research_status" && message.data) {
+    const { status, brand, research } = message.data as {
+      status: "new_brand_no_gummies" | "existing_brand_unchanged";
+      brand: Brand;
+      research: {
+        verdict: string;
+        findings: {
+          summary: string;
+          non_gummy_summary?: string;
+          other_products?: { name: string; type: string; description?: string }[];
+          coming_soon_gummies?: { name: string }[];
+        };
+      };
+    };
+    return <ResearchStatusCard status={status} brand={brand} research={research} onMatch={() => onMatch("Find me a gummy")} />;
+  }
+
   if (message.kind === "dashboard" && message.data) {
-    const { brand, products, research } = message.data as {
+    const { brand, products, research, delta } = message.data as {
       brand: Brand;
       products: CannabisProduct[];
       research: { verdict: string; findings: { summary: string; red_flags?: string[]; license?: string }; sources: string[] };
+      delta?: string[];
     };
     return (
-      <BrandReport 
-        brand={brand} 
-        products={products} 
-        research={research} 
-        onPay={onPay} 
+      <BrandReport
+        brand={brand}
+        products={products}
+        research={research}
+        onPay={onPay}
         isLatestDashboard={isLatestDashboard}
+        delta={delta}
       />
     );
   }
@@ -1325,35 +1373,43 @@ function BrandReport({
   research,
   onPay,
   isLatestDashboard = true,
+  delta,
 }: {
   brand: Brand;
   products: CannabisProduct[];
   research: { verdict: string; findings: { summary: string; red_flags?: string[]; license?: string }; sources: string[] };
   onPay: (product: CannabisProduct, brand: Brand) => void;
   isLatestDashboard?: boolean;
+  /** Names of genuinely-new gummies just added (case 3). Renders a "Just added" badge. */
+  delta?: string[];
 }) {
   const [expanded, setExpanded] = useState(isLatestDashboard);
   const [mobileDetailsOpen, setMobileDetailsOpen] = useState(false);
   const hasRedFlags = research.findings.red_flags && research.findings.red_flags.length > 0;
-  
+
   useEffect(() => {
     setExpanded(isLatestDashboard);
   }, [isLatestDashboard]);
 
   const verdictColor = research.verdict === "verified" ? "leaf" : research.verdict === "caution" ? "gold" : "ember";
-  
+
   return (
     <div className="flex flex-col items-start gap-3 animate-fade-in-up w-full">
       <div className="flex items-start gap-3 w-full">
         <Avatar />
         <div className="w-full max-w-[88%]">
           <Card className="bg-noir-card transition-all">
-            <div 
+            <div
               className="flex items-center justify-between bg-noir-raised px-5 py-3 cursor-pointer select-none hover:bg-noir-raised/80 transition-colors"
               onClick={() => setExpanded(!expanded)}
             >
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-display text-lg font-semibold text-ink">{brand.name}</span>
+                {delta && delta.length > 0 && (
+                  <Badge variant="resin" className="flex items-center gap-1">
+                    <RefreshCw className="h-3 w-3" /> Just added {delta.length}
+                  </Badge>
+                )}
                 {!expanded && <span className="text-xs text-ink-muted">(Tap to expand)</span>}
               </div>
               <Badge variant={verdictColor}>{research.verdict}</Badge>
@@ -1439,12 +1495,149 @@ function BrandReport({
       {/* MOBILE ROLODEX PRODUCTS (Outside the text bubble, hidden on desktop) */}
       {expanded && products.length > 0 && (
         <div className="block sm:hidden w-full pl-11 pr-4 mt-1">
-          <MobileRolodex 
-            matches={products.map(p => ({ product: p, brand, score: 1, reasons: [], warnings: [] }))} 
-            onPay={onPay} 
+          <MobileRolodex
+            matches={products.map(p => ({ product: p, brand, score: 1, reasons: [], warnings: [] }))}
+            onPay={onPay}
           />
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * ResearchStatusCard — renders the two "honest non-match" outcomes:
+ *  - new_brand_no_gummies: legit brand, but they sell oils/topicals only. Shows
+ *    the verdict + what they DO make, with a CTA to find a real gummy instead.
+ *  - existing_brand_unchanged: freshness check — data is current, nothing new.
+ *    Lists any coming-soon gummies so the user knows what's pending.
+ *
+ * This is the honesty moment: SaulSilver declines a non-gummy brand instead of
+ * fabricating one, and proves it re-checked a known brand live.
+ */
+function ResearchStatusCard({
+  status,
+  brand,
+  research,
+  onMatch,
+}: {
+  status: "new_brand_no_gummies" | "existing_brand_unchanged";
+  brand: Brand;
+  research: {
+    verdict: string;
+    findings: {
+      summary: string;
+      non_gummy_summary?: string;
+      other_products?: { name: string; type: string; description?: string }[];
+      coming_soon_gummies?: { name: string }[];
+    };
+  };
+  onMatch: () => void;
+}) {
+  const isNoGummies = status === "new_brand_no_gummies";
+  const verdictColor = research.verdict === "verified" ? "leaf" : research.verdict === "caution" ? "gold" : "ember";
+  const others = research.findings.other_products ?? [];
+  const comingSoon = research.findings.coming_soon_gummies ?? [];
+  const researchedDate = brand.last_researched
+    ? new Date(brand.last_researched).toLocaleDateString("en-IN", { month: "short", day: "numeric" })
+    : "";
+
+  return (
+    <div className="flex items-start gap-3 animate-fade-in-up">
+      <Avatar />
+      <div className="w-full max-w-[88%]">
+        <Card className="bg-noir-card">
+          <div className="flex items-center justify-between bg-noir-raised px-5 py-3">
+            <span className="font-display text-lg font-semibold text-ink">{brand.name}</span>
+            <Badge variant={verdictColor}>{research.verdict}</Badge>
+          </div>
+          <CardContent className="pt-4 space-y-3">
+            {isNoGummies ? (
+              <>
+                {/* THE HONEST DECLINE */}
+                <div className="flex items-start gap-2 rounded-lg border border-ember/20 bg-ember/5 p-3">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-ember" />
+                  <div>
+                    <p className="text-sm font-medium text-ember">They don&apos;t sell gummies.</p>
+                    <p className="text-xs text-ink-muted mt-0.5">
+                      {research.findings.non_gummy_summary
+                        ?? "Their catalog is oils, topicals, or capsules — not edibles."}
+                    </p>
+                  </div>
+                </div>
+
+                {/* WHAT THEY DO MAKE */}
+                {others.length > 0 && (
+                  <div>
+                    <p className="mb-1.5 text-xs font-semibold text-ink-muted uppercase tracking-wider">
+                      What they actually sell
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {others.slice(0, 8).map((p, i) => (
+                        <span
+                          key={i}
+                          className="rounded-full border border-white/10 bg-noir-soft px-2.5 py-1 text-xs text-ink-soft"
+                        >
+                          {p.name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* WHY THEY'RE STILL (UN)TRUSTWORTHY */}
+                <p className="text-xs text-ink-muted leading-relaxed border-t border-white/10 pt-3">
+                  {research.findings.summary}
+                </p>
+
+                {/* CTA — steer toward a real gummy match */}
+                <Button
+                  variant="primary"
+                  size="sm"
+                  className="w-full bg-resin text-noir hover:bg-resin-light"
+                  onClick={onMatch}
+                >
+                  Find me a gummy instead
+                </Button>
+              </>
+            ) : (
+              <>
+                {/* FRESHNESS CONFIRMED */}
+                <div className="flex items-start gap-2 rounded-lg border border-leaf/20 bg-leaf/5 p-3">
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-leaf-light" />
+                  <div>
+                    <p className="text-sm font-medium text-leaf-light">Catalog&apos;s current.</p>
+                    <p className="text-xs text-ink-muted mt-0.5">
+                      Just re-checked {brand.name}&apos;s site{researchedDate ? ` · ${researchedDate}` : ""}. No new gummies since the last refresh.
+                    </p>
+                  </div>
+                </div>
+
+                {/* COMING-SOON PIPELINE */}
+                {comingSoon.length > 0 && (
+                  <div>
+                    <p className="mb-1.5 text-xs font-semibold text-ink-muted uppercase tracking-wider">
+                      Still in the pipeline
+                    </p>
+                    <ul className="space-y-1 text-xs text-ink-muted">
+                      {comingSoon.map((p, i) => (
+                        <li key={i} className="flex items-center gap-1.5">
+                          <Clock className="h-3 w-3 text-gold" />
+                          {p.name} <span className="text-ink-soft/60">— coming soon</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <p className="text-xs text-ink-muted leading-relaxed border-t border-white/10 pt-3">
+                  {research.findings.summary}
+                </p>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
