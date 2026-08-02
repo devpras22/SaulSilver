@@ -215,6 +215,8 @@ export interface CannabisProduct {
   price_inr: number;
   in_stock: boolean;
   product_url?: string;
+  /** Scraped og:image / JSON-LD image — live-researched brands. Seeded brands use local /products/ files. */
+  image_url?: string;
   description?: string;
   // The detail people read to compare brands
   key_uses?: string;

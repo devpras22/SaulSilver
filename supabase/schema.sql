@@ -207,6 +207,7 @@ create table if not exists public.products (
 
   -- Source of truth for the agent's research
   product_url     text,                     -- deep link to the SKU page
+  image_url       text,                     -- scraped og:image / JSON-LD image (live-researched brands)
 
   description     text,
   created_at      timestamptz not null default now(),

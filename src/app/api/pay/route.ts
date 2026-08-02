@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "not authenticated" }, { status: 401 });
 
-    const { items, total, merchantName, merchantUrl, cardId } = (await req.json()) as {
+    const { items, total, merchantName, merchantUrl: merchantUrlFromClient, cardId } = (await req.json()) as {
       items: { name: string; dosage?: string }[];
       total: number;
       merchantName: string;
@@ -31,6 +31,13 @@ export async function POST(req: NextRequest) {
 
     const origin = req.headers.get("origin") || "https://saul.pras.fun";
 
+    // merchantUrl = the REAL destination merchant the agent is buying from
+    // (brand.website / product_url host), NOT our own app origin. This is what
+    // makes the Prava virtual card scoped to the actual checkout target — the
+    // gating requirement for Step 5 (agent checks out on the end merchant).
+    // Default to origin only if the client genuinely sent nothing.
+    const merchantUrl = merchantUrlFromClient || origin;
+
     const session = await createSession({
       userId: user.id,
       userEmail: user.email ?? "",
@@ -38,7 +45,7 @@ export async function POST(req: NextRequest) {
       currency: "INR",
       description: productDescription,
       merchantName,
-      merchantUrl: origin,
+      merchantUrl,
       merchantCountryIso2: "IN",
       productDescription,
       cardId,

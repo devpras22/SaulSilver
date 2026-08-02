@@ -33,6 +33,10 @@ fetch_pharmacies.js
 # via dotenv import + gets typechecked by tsconfig). Keep locally, never commit.
 /scripts/
 
+# Scratch/probe files (same risk — ad-hoc test scripts that get typechecked by
+# tsconfig and break the Vercel build). Keep locally, never commit.
+/scratch/
+
 # agent scaffolding (not relevant to the project)
 AGENTS.md
 CLAUDE.md

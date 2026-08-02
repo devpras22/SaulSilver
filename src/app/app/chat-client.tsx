@@ -34,7 +34,7 @@ import type {
   UserProfile,
 } from "@/lib/types";
 import { EFFECTS, TOLERANCES } from "@/lib/types";
-import { formatINR } from "@/lib/utils";
+import { formatINR, productImage } from "@/lib/utils";
 import { AddressDialog } from "@/components/header-address";
 import { PravaPaymentModal } from "@/components/prava-payment-modal";
 import type { PaymentResultResponse } from "@/lib/prava";
@@ -67,9 +67,11 @@ function isWebKitEngine(): boolean {
 
 export default function AppChat({
   savedAddress,
+  userEmail,
   intent,
 }: {
   savedAddress: string | null;
+  userEmail: string | null;
   intent: Intent;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -490,6 +492,14 @@ export default function AppChat({
   //     embedded modal (PravaCardForm iframe + in-page UX), which works fine.
   const [activePurchase, setActivePurchase] = useState<{ product: CannabisProduct; brand: Brand } | null>(null);
   const [pendingPrescription, setPendingPrescription] = useState<{ product: CannabisProduct; brand: Brand; sessionId: string } | null>(null);
+  // The email the agent will inject at the merchant checkout. Saul uses HIS own
+  // inbox (saulsilver@agentmail.to) by default so order confirmations / tracking
+  // come back to the agent — the "agent owns the mailbox" story. The user can
+  // opt to use their own instead. Null = not yet decided for this purchase.
+  const [contactEmail, setContactEmail] = useState<string | null>(null);
+  // When set, runPayment has paused to ask "your email or mine?" and is waiting
+  // on a chip tap. Holds the purchase to resume once a choice is made.
+  const [pendingEmailChoice, setPendingEmailChoice] = useState<{ product: CannabisProduct; brand: Brand } | null>(null);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [webkitPollingSession, setWebkitPollingSession] = useState<string | null>(null);
   const webkitPollingRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -516,6 +526,19 @@ export default function AppChat({
     }
 
     setActivePurchase({ product, brand });
+
+    // ── Email gate: "your email or mine?" ──
+    // Saul defaults to using HIS inbox (saulsilver@agentmail.to) so the order
+    // confirmation + tracking come back to the agent. Ask once per purchase;
+    // resume from the chip handler once a choice is made.
+    if (contactEmail === null) {
+      setPendingEmailChoice({ product, brand });
+      pushAssistant(
+        `Quick one before I check you out — whose email should I use at ${brand.name}? I'd suggest mine (saulsilver@agentmail.to) so the order confirmation and tracking come straight to me and I can keep you posted. Or I can use yours.`,
+        "text"
+      );
+      return;
+    }
 
     // ── WebKit path: new tab, no iframe on our page ──
     if (isWebKitEngine()) {
@@ -681,7 +704,12 @@ export default function AppChat({
         body: JSON.stringify({
           sessionId,
           txnRefId,
-          productUrl: (product as any).external_url || `https://${brand.name.toLowerCase().replace(/\s+/g, "")}.com`, 
+          // The email to inject at the merchant checkout. When Saul uses his own
+          // inbox, the order confirmation / tracking land at saulsilver@agentmail.to.
+          contactEmail: contactEmail ?? undefined,
+          // product_url is the real per-SKU page (e.g. trymoonimpact.com/products/stellardust).
+          // Fall back to the brand website, then the brand-name guess — in that order.
+          productUrl: (product as any).product_url || brand.website || `https://${brand.name.toLowerCase().replace(/\s+/g, "")}.com`,
           merchantName: brand.name
         }),
       });
@@ -719,6 +747,8 @@ export default function AppChat({
     } finally {
       setBusy(false);
       setActivePurchase(null);
+      // Reset the email choice so the next purchase re-asks "your email or mine?"
+      setContactEmail(null);
     }
   };
 
@@ -792,6 +822,41 @@ export default function AppChat({
                       {t.label}
                     </button>
                   ))}
+                </div>
+              )}
+
+              {/* Email choice — "your email or mine?" at checkout */}
+              {pendingEmailChoice && !busy && lastText.includes("saulsilver@agentmail.to") && (
+                <div className="flex flex-wrap gap-2 pl-[44px] pr-4 pt-1 animate-fade-in-up">
+                  <button
+                    onClick={() => {
+                      setContactEmail("saulsilver@agentmail.to");
+                      const p = pendingEmailChoice;
+                      setPendingEmailChoice(null);
+                      if (p) {
+                        pushAssistant("Nice — I'll use my inbox. Order confirmation and tracking will come to me; I'll keep you posted here.", "text");
+                        runPayment(p.product, p.brand, true);
+                      }
+                    }}
+                    className="rounded-full border border-resin/40 bg-resin/10 shadow-sm px-4 py-2 text-sm text-resin-light transition-all hover:-translate-y-0.5 hover:bg-resin/20"
+                  >
+                    Use Saul's email ✦
+                  </button>
+                  <button
+                    onClick={() => {
+                      // The customer's own email — read from auth context (passed as prop).
+                      setContactEmail(userEmail ?? "guest@saul.pras.fun");
+                      const p = pendingEmailChoice;
+                      setPendingEmailChoice(null);
+                      if (p) {
+                        pushAssistant(`Got it — I'll use your email (${userEmail ?? "your address"}) at checkout.`, "text");
+                        runPayment(p.product, p.brand, true);
+                      }
+                    }}
+                    className="rounded-full border border-border bg-noir/80 shadow-sm px-4 py-2 text-sm text-ink-soft transition-all hover:-translate-y-0.5 hover:border-resin/40 hover:bg-resin/10 hover:text-resin-light"
+                  >
+                    Use my email
+                  </button>
                 </div>
               )}
 
@@ -1183,7 +1248,7 @@ function MenuProductCard({
       <div className="h-36 sm:h-52 w-full bg-gradient-to-b from-resin/5 to-black/60 relative overflow-hidden border-b border-white/10">
         <div className="absolute inset-0 flex items-center justify-center">
           <img 
-            src={`/products/${brand.id}/${product.name.replace(/[^a-z0-9]/gi, '-').toLowerCase()}.jpg`}
+            src={productImage(brand.id, product.name, (product as any).image_url)}
             alt={product.name}
             className="h-full w-full object-cover opacity-50 mix-blend-screen transition-all duration-700 group-hover:scale-110 group-hover:opacity-70"
             onError={(e) => {
@@ -1293,7 +1358,7 @@ function ProductCard({
            {/* Product Image */}
            <div className="absolute inset-0 flex items-center justify-center">
               <img 
-                src={`/products/${brand.id}/${product.name.replace(/[^a-z0-9]/gi, '-').toLowerCase()}.jpg`}
+                src={productImage(brand.id, product.name, (product as any).image_url)}
                 alt={product.name}
                 className="h-full w-full object-cover opacity-60 mix-blend-screen transition-opacity duration-500"
                 onError={(e) => {

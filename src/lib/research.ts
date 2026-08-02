@@ -159,7 +159,8 @@ const productItemSchema = {
     flavor: { type: "string" },
     pack_count: { type: "integer", description: "gummies per pack — gummies only" },
     price_inr: { type: "integer", description: "Whole rupees, no decimals/₹ symbol" },
-    product_url: { type: "string" },
+    product_url: { type: "string", description: "The FULL https URL of THIS product's page (e.g. https://trymoonimpact.com/products/stellardust). Copy it verbatim from the first line of the context block where this product appears. This is what the checkout agent navigates to — never guess or fabricate it." },
+    image_url: { type: "string", description: "The product image URL. Copy verbatim from the 'PRODUCT IMAGE' line in the context block where this product appears (an og:image or JSON-LD image URL). Leave empty if no PRODUCT IMAGE line is present — never fabricate." },
     description: { type: "string", description: "For non-gummies, a 1-line description of what it is (e.g. 'Pain relief roll-on, 30ml'). For gummies, the marketing line." },
   },
   required: ["name", "type", "status"],
@@ -315,6 +316,13 @@ GROUNDING IS CRITICAL — DO NOT INVENT PRODUCTS:
 
 Be precise about cannabinoid mg, ratios, and prices for gummies. If a field isn't in the context, omit it — never invent numbers.
 
+PRODUCT URL IS CRITICAL — this is how the checkout agent reaches the exact product page:
+- Each context block STARTS with the URL of the page it was scraped from (the first line, e.g. "https://trymoonimpact.com/products/stellardust").
+- For every product, copy the URL of the page it appears on into its \`product_url\` field verbatim.
+- Prefer the deepest/most-specific product page URL (e.g. /products/stellardust), not the collection or homepage.
+- If a product only appears on a collection page (no individual page), use that collection URL.
+- Never fabricate a URL — if you can't see the page URL in the context, leave product_url empty.
+
 For the India market: "Vijaya" = legal medical cannabis leaf extract, sold under Schedule E(1) with a prescription. Most brands route prescriptions through an in-house doctor on a 5-minute call.
 
 Region defaults to "IN" unless the context clearly indicates otherwise.
@@ -437,6 +445,7 @@ trust_score: 0.9+ = clearly legit with lab tests; 0.6-0.9 = probably legit but g
         price_inr: (p.price_inr as number) ?? 0,
         in_stock: true,
         product_url: (p.product_url as string) ?? undefined,
+        image_url: (p.image_url as string) ?? undefined,
         description: (p.description as string) ?? undefined,
       });
       return;

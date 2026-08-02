@@ -322,11 +322,40 @@ async function insertProducts(
       price_inr: p.price_inr,
       in_stock: p.in_stock,
       product_url: p.product_url ?? null,
+      image_url: p.image_url ?? null,
       description: p.description ?? null,
     }))
   );
   if (error) {
-    console.error("[/api/research] product insert failed:", error.message);
+    // If image_url column is missing (migration not yet applied), retry without it
+    // so the rest of the product still persists. The runtime result carries
+    // image_url for the card regardless of DB state.
+    if (/image_url/i.test(error.message)) {
+      const { error: retryError } = await supabase.from("products").insert(
+        products.map((p) => ({
+          brand_id: brandId,
+          name: p.name,
+          variant: p.variant ?? null,
+          cannabinoids: p.cannabinoids ?? {},
+          ratio: p.ratio ?? null,
+          spectrum: p.spectrum ?? null,
+          effect_tags: p.effect_tags,
+          dose_level: p.dose_level,
+          onset_minutes: p.onset_minutes ?? null,
+          duration_hours: p.duration_hours ?? null,
+          flavor: p.flavor ?? null,
+          pack_count: p.pack_count,
+          price_inr: p.price_inr,
+          in_stock: p.in_stock,
+          product_url: p.product_url ?? null,
+          description: p.description ?? null,
+        }))
+      );
+      if (retryError) console.error("[/api/research] product insert retry failed:", retryError.message);
+      else console.warn("[/api/research] image_url column missing — applied migration 20260802_product_image_url.sql to persist images.");
+    } else {
+      console.error("[/api/research] product insert failed:", error.message);
+    }
   }
 }
 
@@ -433,6 +462,25 @@ async function fetchPage(url: string): Promise<string | null> {
       }
     }
 
+    // 1b. PRODUCT IMAGE — capture og:image + the JSON-LD Product `image` field.
+    //     This is what lets a live-researched brand render its real photo instead
+    //     of the Leaf fallback. Surface it explicitly so OpenAI copies it verbatim
+    //     into image_url (mirrors the LICENCE EXTRACT pattern).
+    let productImage = "";
+    const ogImg = html.match(/<meta\s+property=["']og:image["']\s+content=["']([^"']+)["']/i);
+    if (ogImg) productImage = ogImg[1];
+    if (!productImage) {
+      // Fall back to the image inside a Product JSON-LD block.
+      for (const b of ldBlocks) {
+        const imgInLd = b.match(/"image"\s*:\s*"([^"]+)"/);
+        if (imgInLd) { productImage = imgInLd[1]; break; }
+      }
+    }
+    if (productImage) {
+      if (productImage.startsWith("//")) productImage = `https:${productImage}`;
+      else if (productImage.startsWith("/")) productImage = `${new URL(url).origin}${productImage}`;
+    }
+
     // 2. Capture price patterns explicitly — they get mangled by tag stripping.
     const priceMatches = html.match(/[₹$]\s?[0-9][0-9,]*\.?[0-9]{0,2}/g) ?? [];
 
@@ -467,6 +515,9 @@ async function fetchPage(url: string): Promise<string | null> {
     }
     if (comingSoon.length > 0) {
       parts.push(`AVAILABILITY SIGNALS (coming soon / sold out detected): ${[...new Set(comingSoon.map((s) => s.toLowerCase()))].slice(0, 8).join(", ")}`);
+    }
+    if (productImage) {
+      parts.push(`PRODUCT IMAGE (copy verbatim into image_url): ${productImage}`);
     }
     parts.push(text);
 

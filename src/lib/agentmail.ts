@@ -79,8 +79,15 @@ export async function sendPrescriptionRoutingEmail(params: {
   customerEmail: string;
   customerName?: string;
   doctorRouting?: string;
+  /**
+   * When the agent placed the order under its OWN inbox (saulsilver@agentmail.to),
+   * brand replies should come back to the AGENT — not bypass it to the customer.
+   * If agentOwnsOrder is true, replyTo points to the agent inbox. Otherwise it
+   * points to the customer (legacy behavior). Default false for back-compat.
+   */
+  agentOwnsOrder?: boolean;
 }): Promise<SendMailResult> {
-  const { brandName, brandSupportEmail, productName, orderId, customerEmail, customerName, doctorRouting } = params;
+  const { brandName, brandSupportEmail, productName, orderId, customerEmail, customerName, doctorRouting, agentOwnsOrder } = params;
 
   const subject = `Doctor consultation request — Order ${orderId} — ${productName}`;
   const greeting = customerName ? `Hi ${customerName}` : "Hi";
@@ -118,5 +125,9 @@ saulsilver@agentmail.to`;
   <p style="margin-top:24px;color:#666;font-size:13px">— SaulSilver<br/>saulsilver@agentmail.to</p>
 </div>`;
 
-  return sendMail({ to: brandSupportEmail, subject, text, html, replyTo: customerEmail });
+  // When the agent owns the order (used its inbox at checkout), brand replies come
+  // back to the agent so it can forward tracking/updates to the customer. Otherwise
+  // replies go straight to the customer (the original behavior).
+  const replyTo = agentOwnsOrder ? INBOX_ID : customerEmail;
+  return sendMail({ to: brandSupportEmail, subject, text, html, replyTo });
 }

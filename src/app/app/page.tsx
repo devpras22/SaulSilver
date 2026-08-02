@@ -32,6 +32,6 @@ export default async function AppPage({
     savedAddress = activeAddressObj?.address ?? null;
   }
 
-  return <AppChat key={chatKey} savedAddress={savedAddress} intent={intent} />;
+  return <AppChat key={chatKey} savedAddress={savedAddress} userEmail={user?.email ?? null} intent={intent} />;
 }
 
