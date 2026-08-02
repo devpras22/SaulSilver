@@ -897,7 +897,7 @@ function MessageBubble({
         brand={brand} 
         products={products} 
         research={research} 
-        onPay={(product, brand) => handlePayClick(product, brand)} 
+        onPay={onPay} 
         isLatestDashboard={isLatestDashboard}
       />
     );
