@@ -655,7 +655,7 @@ export default function AppChat({
         body: JSON.stringify({
           sessionId,
           txnRefId,
-          productUrl: product.external_url || `https://${brand.name.toLowerCase().replace(/\s+/g, "")}.com`, 
+          productUrl: (product as any).external_url || `https://${brand.name.toLowerCase().replace(/\s+/g, "")}.com`, 
           merchantName: brand.name
         }),
       });
@@ -961,7 +961,11 @@ function MessageBubble({
 
   if (message.kind === "research_status" && message.data) {
     const { status, brand, research } = message.data as {
-      status: "new_brand_no_gummies" | "existing_brand_unchanged";
+      status:
+        | "new_brand_no_gummies"
+        | "existing_brand_unchanged"
+        | "research_unavailable"
+        | "not_a_cannabis_brand";
       brand: Brand;
       research: {
         verdict: string;
@@ -971,7 +975,7 @@ function MessageBubble({
           other_products?: { name: string; type: string; description?: string }[];
           coming_soon_gummies?: { name: string }[];
         };
-      };
+      } | null;
     };
     return <ResearchStatusCard status={status} brand={brand} research={research} onPickEffect={(effect) => onMatch(effect)} />;
   }
@@ -1556,7 +1560,11 @@ function ResearchStatusCard({
   research,
   onPickEffect,
 }: {
-  status: "new_brand_no_gummies" | "existing_brand_unchanged";
+  status:
+    | "new_brand_no_gummies"
+    | "existing_brand_unchanged"
+    | "research_unavailable"
+    | "not_a_cannabis_brand";
   brand: Brand;
   research: {
     verdict: string;
@@ -1566,17 +1574,100 @@ function ResearchStatusCard({
       other_products?: { name: string; type: string; description?: string }[];
       coming_soon_gummies?: { name: string }[];
     };
-  };
+  } | null;
   /** Pick an effect → match engine runs directly. No LLM, no mis-routing. */
   onPickEffect: (effect: Effect) => void;
 }) {
-  const isNoGummies = status === "new_brand_no_gummies";
-  const verdictColor = research.verdict === "verified" ? "leaf" : research.verdict === "caution" ? "gold" : "ember";
-  const others = research.findings.other_products ?? [];
-  const comingSoon = research.findings.coming_soon_gummies ?? [];
+  // ── The two "couldn't honestly research" cases get their own friendly cards.
+  // No verdict badge, no fabricated data — just Saul talking like a person.
+  if (status === "research_unavailable") {
+    return (
+      <div className="flex items-start gap-3 animate-fade-in-up">
+        <Avatar />
+        <div className="w-full max-w-[88%]">
+          <Card className="bg-noir-card">
+            <CardContent className="pt-4 space-y-3">
+              <div className="flex items-start gap-2 rounded-lg border border-gold/20 bg-gold/5 p-3">
+                <Clock className="mt-0.5 h-4 w-4 shrink-0 text-gold" />
+                <div>
+                  <p className="text-sm font-medium text-gold">
+                    Couldn&apos;t get through to {brand.name}&apos;s site.
+                  </p>
+                  <p className="text-xs text-ink-muted mt-1 leading-relaxed">
+                    I tried pulling up their shop, but their pages didn&apos;t open for me — happens
+                    sometimes with sites that block automated reads. Doesn&apos;t mean anything about the
+                    brand itself. Try one of the names below and I&apos;ll have a real answer in seconds,
+                    or hand me a direct product link and I&apos;ll work with that.
+                  </p>
+                </div>
+              </div>
+              <p className="text-xs font-medium text-ink-soft">Find a gummy instead — what are you after?</p>
+              <div className="flex flex-wrap gap-2">
+                {EFFECTS.map((e) => (
+                  <button
+                    key={e.value}
+                    onClick={() => onPickEffect(e.value)}
+                    className="inline-flex items-center rounded-full border border-white/10 bg-noir/80 px-3.5 py-1.5 text-xs text-ink-soft shadow-sm backdrop-blur-md transition-all hover:-translate-y-0.5 hover:border-resin/40 hover:bg-resin/10 hover:text-resin-light"
+                  >
+                    {e.label}
+                  </button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  if (status === "not_a_cannabis_brand") {
+    return (
+      <div className="flex items-start gap-3 animate-fade-in-up">
+        <Avatar />
+        <div className="w-full max-w-[88%]">
+          <Card className="bg-noir-card">
+            <CardContent className="pt-4 space-y-3">
+              <div className="flex items-start gap-2 rounded-lg border border-frost/20 bg-frost/5 p-3">
+                <Beaker className="mt-0.5 h-4 w-4 shrink-0 text-frost" />
+                <div>
+                  <p className="text-sm font-medium text-frost">
+                    {brand.name} doesn&apos;t look like a cannabis brand.
+                  </p>
+                  <p className="text-xs text-ink-muted mt-1 leading-relaxed">
+                    I read through their site and couldn&apos;t find any cannabinoid products — no
+                    Vijaya, no CBD oils, no edibles. Probably a different kind of company. If I&apos;ve
+                    got the wrong site, drop me the right link. Otherwise, here are some real gummies
+                    to check out.
+                  </p>
+                </div>
+              </div>
+              <p className="text-xs font-medium text-ink-soft">Find a gummy — what are you after?</p>
+              <div className="flex flex-wrap gap-2">
+                {EFFECTS.map((e) => (
+                  <button
+                    key={e.value}
+                    onClick={() => onPickEffect(e.value)}
+                    className="inline-flex items-center rounded-full border border-white/10 bg-noir/80 px-3.5 py-1.5 text-xs text-ink-soft shadow-sm backdrop-blur-md transition-all hover:-translate-y-0.5 hover:border-resin/40 hover:bg-resin/10 hover:text-resin-light"
+                  >
+                    {e.label}
+                  </button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  // From here, research is non-null (no_gummies / unchanged both have findings).
+  const verdictColor = research!.verdict === "verified" ? "leaf" : research!.verdict === "caution" ? "gold" : "ember";
+  const others = research!.findings.other_products ?? [];
+  const comingSoon = research!.findings.coming_soon_gummies ?? [];
   const researchedDate = brand.last_researched
     ? new Date(brand.last_researched).toLocaleDateString("en-IN", { month: "short", day: "numeric" })
     : "";
+  const isNoGummies = status === "new_brand_no_gummies";
 
   return (
     <div className="flex items-start gap-3 animate-fade-in-up">
@@ -1585,7 +1676,7 @@ function ResearchStatusCard({
         <Card className="bg-noir-card">
           <div className="flex items-center justify-between bg-noir-raised px-5 py-3">
             <span className="font-display text-lg font-semibold text-ink">{brand.name}</span>
-            <Badge variant={verdictColor}>{research.verdict}</Badge>
+            <Badge variant={verdictColor}>{research!.verdict}</Badge>
           </div>
           <CardContent className="pt-4 space-y-3">
             {isNoGummies ? (
@@ -1596,7 +1687,7 @@ function ResearchStatusCard({
                   <div>
                     <p className="text-sm font-medium text-ember">They don&apos;t sell gummies.</p>
                     <p className="text-xs text-ink-muted mt-0.5">
-                      {research.findings.non_gummy_summary
+                      {research!.findings.non_gummy_summary
                         ?? "Their catalog is oils, topicals, or capsules — not edibles."}
                     </p>
                   </div>
@@ -1623,7 +1714,7 @@ function ResearchStatusCard({
 
                 {/* WHY THEY'RE STILL (UN)TRUSTWORTHY */}
                 <p className="text-xs text-ink-muted leading-relaxed border-t border-white/10 pt-3">
-                  {research.findings.summary}
+                  {research!.findings.summary}
                 </p>
 
                 {/* CTA — pick a vibe → match engine runs directly (no LLM). */}
@@ -1675,7 +1766,7 @@ function ResearchStatusCard({
                 )}
 
                 <p className="text-xs text-ink-muted leading-relaxed border-t border-white/10 pt-3">
-                  {research.findings.summary}
+                  {research!.findings.summary}
                 </p>
               </>
             )}

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { pollPaymentResult, reportStatus } from "@/lib/prava";
 import { Stagehand } from "@browserbasehq/stagehand";
+import { z } from "zod";
 
 export const maxDuration = 300; // Allow up to 5 minutes for the Stagehand automation
 
@@ -37,7 +38,7 @@ export async function POST(req: NextRequest) {
     try {
       // 3. Navigate to the specific product URL
       console.log(`[checkout/automate] Navigating to ${productUrl}...`);
-      await stagehand.goto(productUrl);
+      await (stagehand as any).page.goto(productUrl);
 
       // 4. Add to Cart & Go to Checkout
       console.log(`[checkout/automate] Adding to cart and proceeding to checkout...`);
@@ -55,13 +56,13 @@ export async function POST(req: NextRequest) {
 
       // 6. Wait for and detect the decline
       console.log(`[checkout/automate] Waiting for merchant decline...`);
-      const extractResult = await stagehand.extract({
-        instruction: "Extract the payment error or decline message shown on the page after submitting the card.",
-        schema: {
-          errorMessage: "string",
-          isDeclined: "boolean"
-        }
-      });
+      const extractResult = await stagehand.extract(
+        "Extract the payment error or decline message shown on the page after submitting the card.",
+        z.object({
+          errorMessage: z.string(),
+          isDeclined: z.boolean()
+        })
+      );
       
       console.log(`[checkout/automate] Merchant response:`, extractResult);
 
