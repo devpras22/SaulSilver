@@ -46,13 +46,14 @@ export default function Home() {
       <header className="sticky top-0 z-40 border-b border-border/60 bg-noir/80 backdrop-blur-md">
         <nav className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <Wordmark />
-          <div className="flex items-center gap-3">
-            <Button variant="outline" size="sm" className="hidden sm:flex border-resin/20 bg-noir/50 backdrop-blur-md text-ink hover:bg-resin/10 hover:border-resin/50" asChild>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Button variant="outline" size="sm" className="flex border-resin/20 bg-noir/50 backdrop-blur-md text-ink hover:bg-resin/10 hover:border-resin/50 px-3 sm:px-4" asChild>
               <a href="sms:+12135396502?body=Hello%20World">
-                <MessageSquare className="mr-1.5 h-3.5 w-3.5 text-resin" /> iMessage Saul
+                <span className="text-base sm:mr-1.5">💬</span> 
+                <span className="hidden sm:inline">iMessage Saul</span>
               </a>
             </Button>
-            <Button variant="primary" size="sm" className="bg-resin text-noir hover:bg-resin-light" asChild>
+            <Button variant="primary" size="sm" className="bg-resin text-noir hover:bg-resin-light px-3 sm:px-4" asChild>
               <Link href="/app?intent=browse">Find My Gummy</Link>
             </Button>
           </div>
