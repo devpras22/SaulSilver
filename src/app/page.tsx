@@ -19,7 +19,9 @@ import {
   CreditCard,
   Network,
   TrendingUp,
+  MessageSquare,
 } from "lucide-react";
+import Image from "next/image";
 
 const BRANDS: { name: string; url: string }[] = [
   { name: "Magiccann", url: "https://magiccann.in" },
@@ -44,7 +46,12 @@ export default function Home() {
       <header className="sticky top-0 z-40 border-b border-border/60 bg-noir/80 backdrop-blur-md">
         <nav className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <Wordmark />
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-3">
+            <Button variant="outline" size="sm" className="hidden sm:flex border-resin/20 bg-noir/50 backdrop-blur-md text-ink hover:bg-resin/10 hover:border-resin/50" asChild>
+              <a href="sms:+12135396502?body=Hello%20World">
+                <MessageSquare className="mr-1.5 h-3.5 w-3.5 text-resin" /> iMessage Saul
+              </a>
+            </Button>
             <Button variant="primary" size="sm" className="bg-resin text-noir hover:bg-resin-light" asChild>
               <Link href="/app?intent=browse">Find My Gummy</Link>
             </Button>
@@ -100,20 +107,37 @@ export default function Home() {
             Then buys it.
           </p>
 
-          <div className="mt-10 flex animate-fade-in-up flex-col items-center justify-center gap-3 sm:flex-row" style={{ animationDelay: "200ms" }}>
-            <Button size="lg" className="w-full px-8 glow-resin bg-gradient-to-t from-resin-dark to-resin text-noir font-semibold shadow-inner shadow-white/30 hover:brightness-110 border border-resin-light/50 transition-all sm:w-auto" asChild>
-              <Link href="/app?intent=match">
-                Consult the Sommelier <ArrowRight className="ml-1.5 h-4 w-4" />
-              </Link>
-            </Button>
-            <Button size="lg" variant="secondary" className="w-full px-8 bg-noir/40 backdrop-blur-md border border-white/10 hover:bg-white/10 text-ink shadow-lg transition-all sm:w-auto" asChild>
-              <Link href="/app?intent=verify">
-                Is this brand any good?
-              </Link>
-            </Button>
+          <div className="mt-10 flex flex-col items-center justify-center gap-10 animate-fade-in-up" style={{ animationDelay: "200ms" }}>
+            <div className="flex flex-col items-center justify-center gap-3 sm:flex-row w-full sm:w-auto">
+              <Button size="lg" className="w-full px-8 glow-resin bg-gradient-to-t from-resin-dark to-resin text-noir font-semibold shadow-inner shadow-white/30 hover:brightness-110 border border-resin-light/50 transition-all sm:w-auto" asChild>
+                <Link href="/app?intent=match">
+                  Consult the Sommelier <ArrowRight className="ml-1.5 h-4 w-4" />
+                </Link>
+              </Button>
+              <Button size="lg" variant="secondary" className="w-full px-8 bg-noir/40 backdrop-blur-md border border-white/10 hover:bg-white/10 text-ink shadow-lg transition-all sm:w-auto" asChild>
+                <Link href="/app?intent=verify">
+                  Is this brand any good?
+                </Link>
+              </Button>
+            </div>
+            
+            <div className="flex flex-col items-center gap-3 rounded-2xl border border-white/5 bg-white/5 p-4 backdrop-blur-md">
+              <div className="relative h-40 w-40 overflow-hidden rounded-xl border border-white/10 bg-noir shadow-2xl">
+                <Image 
+                  src="/saul-qr.png" 
+                  alt="Text Saul Silver on iMessage" 
+                  fill 
+                  className="object-cover" 
+                />
+              </div>
+              <div className="text-center">
+                <p className="text-sm font-medium text-ink">Scan to text Saul directly</p>
+                <p className="text-xs text-ink-muted">or click "iMessage Saul" up top</p>
+              </div>
+            </div>
           </div>
 
-          <p className="mt-6 animate-fade-in-up text-xs uppercase tracking-[0.2em] text-ink-muted" style={{ animationDelay: "300ms" }}>
+          <p className="mt-10 animate-fade-in-up text-xs uppercase tracking-[0.2em] text-ink-muted" style={{ animationDelay: "300ms" }}>
             21+ · legal markets only · Prava-secured checkout
           </p>
         </div>
