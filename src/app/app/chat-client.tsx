@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useSwipeable } from "react-swipeable";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -999,13 +1000,29 @@ function CatalogList({
   );
 }
 
-function MenuProductCard({ match, onPay }: { match: ProductMatch; onPay: (p: CannabisProduct, b: Brand) => void }) {
-  const [expanded, setExpanded] = useState(false);
+function MenuProductCard({ 
+  match, 
+  onPay,
+  isExpanded,
+  onToggleExpand,
+  className,
+  expandedClassName
+}: { 
+  match: ProductMatch; 
+  onPay: (p: CannabisProduct, b: Brand) => void;
+  isExpanded?: boolean;
+  onToggleExpand?: (expanded: boolean) => void;
+  className?: string;
+  expandedClassName?: string;
+}) {
+  const [internalExpanded, setInternalExpanded] = useState(false);
+  const expanded = isExpanded !== undefined ? isExpanded : internalExpanded;
+  const setExpanded = onToggleExpand || setInternalExpanded;
   const { product, brand } = match;
 
   if (expanded) {
     return (
-      <div className="w-80 shrink-0 snap-start relative z-50 shadow-2xl">
+      <div className={`shrink-0 snap-start relative z-50 shadow-2xl transition-all ${expandedClassName || className || 'w-80'}`}>
         <ProductCard match={match} rank={-1} onPay={onPay} onClose={() => setExpanded(false)} />
       </div>
     );
@@ -1021,9 +1038,9 @@ function MenuProductCard({ match, onPay }: { match: ProductMatch; onPay: (p: Can
   return (
     <Card 
       onClick={() => setExpanded(true)}
-      className="w-56 shrink-0 snap-start cursor-pointer overflow-hidden border-white/10 bg-black/40 backdrop-blur-md transition-all hover:border-resin/40 hover:-translate-y-1 hover:shadow-xl group relative shadow-lg"
+      className={`shrink-0 snap-start cursor-pointer overflow-hidden border-white/10 bg-black/40 backdrop-blur-md transition-all hover:border-resin/40 hover:-translate-y-1 hover:shadow-xl group relative shadow-lg ${className || 'w-56'}`}
     >
-      <div className="h-28 w-full bg-gradient-to-b from-resin/5 to-black/60 relative overflow-hidden border-b border-white/10">
+      <div className="h-36 w-full bg-gradient-to-b from-resin/5 to-black/60 relative overflow-hidden border-b border-white/10">
         <div className="absolute inset-0 flex items-center justify-center">
           <img 
             src={`/products/${brand.id}/${product.name.replace(/[^a-z0-9]/gi, '-').toLowerCase()}.jpg`}
@@ -1038,22 +1055,22 @@ function MenuProductCard({ match, onPay }: { match: ProductMatch; onPay: (p: Can
           />
         </div>
         <div className="absolute top-2 left-2">
-          <span className="rounded bg-black/60 backdrop-blur-md px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-white/80 border border-white/10">
+          <span className="rounded bg-black/60 backdrop-blur-md px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-white/80 border border-white/10">
             {brand.name}
           </span>
         </div>
       </div>
-      <CardContent className="p-3 flex flex-col justify-between h-[100px]">
+      <CardContent className="p-4 flex flex-col justify-between h-[110px]">
         <div>
-          <h4 className="mb-2 text-sm font-semibold text-white line-clamp-1 drop-shadow-sm" title={product.name}>{cleanName}</h4>
-          <div className="flex flex-wrap gap-1 text-[10px] text-white/70">
+          <h4 className="mb-2 text-base font-semibold text-white line-clamp-1 drop-shadow-sm" title={product.name}>{cleanName}</h4>
+          <div className="flex flex-wrap gap-1.5 text-xs text-white/70">
             {product.ratio && <span className="rounded-sm bg-white/10 px-1.5 py-0.5 border border-white/5">{product.ratio}</span>}
             {product.cannabinoids?.total_extract_mg && <span className="rounded-sm bg-white/10 px-1.5 py-0.5 border border-white/5">{product.cannabinoids.total_extract_mg}mg</span>}
           </div>
         </div>
         <div className="flex items-center justify-between mt-auto">
-          <span className="text-sm font-semibold text-resin drop-shadow-sm">{formatINR(product.price_inr)}</span>
-          <span className="flex items-center text-[10px] text-white/40 group-hover:text-resin/80 transition-colors font-medium">View details →</span>
+          <span className="text-base font-semibold text-resin drop-shadow-sm">{formatINR(product.price_inr)}</span>
+          <span className="flex items-center text-xs text-white/40 group-hover:text-resin/80 transition-colors font-medium">View details →</span>
         </div>
       </CardContent>
     </Card>
@@ -1241,93 +1258,188 @@ function BrandReport({
 }) {
   const [expanded, setExpanded] = useState(isLatestDashboard);
   const [mobileDetailsOpen, setMobileDetailsOpen] = useState(false);
+  const hasRedFlags = research.findings.red_flags && research.findings.red_flags.length > 0;
   
   useEffect(() => {
     setExpanded(isLatestDashboard);
   }, [isLatestDashboard]);
 
   const verdictColor = research.verdict === "verified" ? "leaf" : research.verdict === "caution" ? "gold" : "ember";
+  
   return (
-    <div className="flex items-start gap-3 animate-fade-in-up">
-      <Avatar />
-      <div className="w-full max-w-[88%]">
-        <Card className="bg-noir-card transition-all">
-          <div 
-            className="flex items-center justify-between bg-noir-raised px-5 py-3 cursor-pointer select-none hover:bg-noir-raised/80 transition-colors"
-            onClick={() => setExpanded(!expanded)}
-          >
-            <div className="flex items-center gap-2">
-              <span className="font-display text-lg font-semibold text-ink">{brand.name}</span>
-              {!expanded && <span className="text-xs text-ink-muted">(Tap to expand)</span>}
+    <div className="flex flex-col items-start gap-3 animate-fade-in-up w-full">
+      <div className="flex items-start gap-3 w-full">
+        <Avatar />
+        <div className="w-full max-w-[88%]">
+          <Card className="bg-noir-card transition-all">
+            <div 
+              className="flex items-center justify-between bg-noir-raised px-5 py-3 cursor-pointer select-none hover:bg-noir-raised/80 transition-colors"
+              onClick={() => setExpanded(!expanded)}
+            >
+              <div className="flex items-center gap-2">
+                <span className="font-display text-lg font-semibold text-ink">{brand.name}</span>
+                {!expanded && <span className="text-xs text-ink-muted">(Tap to expand)</span>}
+              </div>
+              <Badge variant={verdictColor}>{research.verdict}</Badge>
             </div>
-            <Badge variant={verdictColor}>{research.verdict}</Badge>
-          </div>
-          
-          {expanded && (
-            <CardContent className="pt-4 animate-fade-in-up">
-              {/* MOBILE TL;DR HEADER */}
-              <div className="block sm:hidden mb-4">
-                <button 
-                  onClick={() => setMobileDetailsOpen(!mobileDetailsOpen)}
-                  className="flex w-full items-center justify-between rounded-lg bg-noir-soft px-3 py-2 text-xs font-medium text-ink-muted border border-border"
-                >
-                  <span className="flex items-center gap-2">
-                    {research.findings.red_flags && research.findings.red_flags.length > 0 
-                      ? <><AlertCircle className="h-4 w-4 text-ember"/> <span className="text-ember font-semibold">{research.findings.red_flags.length} Red Flags</span></>
-                      : <><Shield className="h-4 w-4 text-leaf"/> <span className="text-leaf font-semibold">Verified Details</span></>
-                    }
-                  </span>
-                  {mobileDetailsOpen ? <ChevronUp className="h-4 w-4"/> : <ChevronDown className="h-4 w-4"/>}
-                </button>
-              </div>
-
-              {/* TEXT CONTENT (Hidden on mobile if not open) */}
-              <div className={mobileDetailsOpen ? "block mb-4" : "hidden sm:block sm:mb-4"}>
-                {brand.tagline && <p className="mb-3 text-sm italic text-ink-soft">{brand.tagline}</p>}
-                <p className="text-sm text-ink">{research.findings.summary}</p>
-                {research.findings.license && (
-                  <div className="mt-3 flex items-start gap-2 rounded-lg border border-leaf/20 bg-leaf/5 p-3 text-xs">
-                    <Shield className="mt-0.5 h-4 w-4 shrink-0 text-leaf-light" />
-                    <span className="text-ink-soft">{research.findings.license}</span>
-                  </div>
-                )}
-                {research.findings.red_flags && research.findings.red_flags.length > 0 && (
-                  <div className="mt-3">
-                    <p className="mb-1.5 text-xs font-medium text-ember">Red flags</p>
-                    <ul className="space-y-0.5 text-xs text-ink-muted">
-                      {research.findings.red_flags.map((r, i) => (<li key={i}>• {r}</li>))}
-                    </ul>
-                  </div>
-                )}
-                {brand.instagram_followers && brand.instagram_followers > 0 && (
-                  <p className="mt-3 text-xs text-ink-muted">
-                    <a 
-                      href={`https://instagram.com/${brand.instagram_handle?.replace('@', '')}`} 
-                      target="_blank" 
-                      rel="noreferrer" 
-                      className="hover:text-resin transition-colors underline underline-offset-2"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {brand.instagram_handle}
-                    </a> · {formatFollowers(brand.instagram_followers)}
-                  </p>
-                )}
-              </div>
-
-              {/* PRODUCTS */}
-              {products.length > 0 && (
-                <div className="border-t border-white/10 pt-4">
-                  <p className="mb-3 text-xs uppercase tracking-wider text-white/50">{products.length} product{products.length > 1 ? "s" : ""} from {brand.name}</p>
-                  <div className="flex w-full snap-x snap-mandatory overflow-x-auto pb-6 scrollbar-hide -space-x-12 sm:space-x-3 pl-8 sm:pl-0">
-                    {products.map((p, i) => (
-                      <MenuProductCard key={i} match={{ product: p, brand, score: 1, reasons: [], warnings: [] }} onPay={onPay} />
-                    ))}
-                  </div>
+            
+            {expanded && (
+              <CardContent className="pt-4 animate-fade-in-up">
+                {/* MOBILE TL;DR HEADER */}
+                <div className="block sm:hidden mb-4">
+                  <button 
+                    onClick={() => setMobileDetailsOpen(!mobileDetailsOpen)}
+                    className="flex w-full items-center justify-between rounded-lg bg-noir-soft px-3 py-2 text-xs font-medium text-ink-muted border border-border"
+                  >
+                    <span className="flex items-center gap-2">
+                      {hasRedFlags 
+                        ? <><AlertCircle className="h-4 w-4 text-ember"/> <span className="text-ember font-semibold">{research.findings.red_flags!.length} Red Flags</span></>
+                        : <><Shield className="h-4 w-4 text-ink-soft"/> <span className="text-ink-soft font-semibold">Brand Details & License</span></>
+                      }
+                    </span>
+                    {mobileDetailsOpen ? <ChevronUp className="h-4 w-4"/> : <ChevronDown className="h-4 w-4"/>}
+                  </button>
                 </div>
-              )}
-            </CardContent>
-          )}
-        </Card>
+
+                {/* TEXT CONTENT (Hidden on mobile if not open) */}
+                <div className={mobileDetailsOpen ? "block mb-4" : "hidden sm:block sm:mb-4"}>
+                  {/* RED FLAGS FIRST */}
+                  {hasRedFlags && (
+                    <div className="mb-4 rounded-lg border border-ember/20 bg-ember/5 p-3">
+                      <p className="mb-1.5 text-xs font-semibold text-ember uppercase tracking-wider flex items-center gap-1.5"><AlertCircle className="w-3.5 h-3.5" /> Red flags</p>
+                      <ul className="space-y-1 text-xs text-ink-muted ml-1">
+                        {research.findings.red_flags!.map((r, i) => (<li key={i}>• {r}</li>))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* AYUSH LICENSE SECOND */}
+                  {research.findings.license && (
+                    <div className="mb-4 flex items-center gap-2 rounded-lg border border-leaf/20 bg-leaf/5 px-3 py-2 text-xs">
+                      <Shield className="h-4 w-4 shrink-0 text-leaf-light" />
+                      <span className="text-leaf-light font-medium">{research.findings.license}</span>
+                    </div>
+                  )}
+
+                  {/* BRAND SUMMARY THIRD */}
+                  {brand.tagline && <p className="mb-2 text-sm italic text-ink-soft">{brand.tagline}</p>}
+                  <p className="text-sm text-ink">{research.findings.summary}</p>
+                  
+                  {/* INSTAGRAM FOURTH */}
+                  {brand.instagram_followers && brand.instagram_followers > 0 && (
+                    <p className="mt-3 text-xs text-ink-muted">
+                      <a 
+                        href={`https://instagram.com/${brand.instagram_handle?.replace('@', '')}`} 
+                        target="_blank" 
+                        rel="noreferrer" 
+                        className="hover:text-resin transition-colors underline underline-offset-2"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {brand.instagram_handle}
+                      </a> · {formatFollowers(brand.instagram_followers)}
+                    </p>
+                  )}
+                </div>
+
+                {/* DESKTOP PRODUCTS (Hidden on mobile) */}
+                {products.length > 0 && (
+                  <div className="hidden sm:block border-t border-white/10 pt-4">
+                    <p className="mb-3 text-xs uppercase tracking-wider text-white/50">{products.length} product{products.length > 1 ? "s" : ""} from {brand.name}</p>
+                    <div className="flex w-full overflow-x-auto pb-4 scrollbar-hide space-x-3">
+                      {products.map((p, i) => (
+                        <div key={i} className="min-w-[280px]">
+                          <MenuProductCard match={{ product: p, brand, score: 1, reasons: [], warnings: [] }} onPay={onPay} />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            )}
+          </Card>
+        </div>
+      </div>
+
+      {/* MOBILE ROLODEX PRODUCTS (Outside the text bubble, hidden on desktop) */}
+      {expanded && products.length > 0 && (
+        <div className="block sm:hidden w-full pl-11 pr-4 mt-1">
+          <MobileRolodex products={products} brand={brand} onPay={onPay} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MobileRolodex({ products, brand, onPay }: { products: CannabisProduct[], brand: Brand, onPay: any }) {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
+
+  const nextCard = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setExpandedIndex(null);
+    setActiveIndex((prev) => (prev + 1) % products.length);
+  };
+  
+  const prevCard = () => {
+    setExpandedIndex(null);
+    setActiveIndex((prev) => (prev - 1 + products.length) % products.length);
+  };
+
+  const handlers = useSwipeable({
+    onSwipedLeft: () => nextCard(),
+    onSwipedRight: () => prevCard(),
+    preventScrollOnSwipe: true,
+    trackMouse: true
+  });
+
+  // If a card is expanded, the container needs to be taller.
+  const containerHeight = expandedIndex !== null ? "h-[540px]" : "h-[320px]";
+
+  return (
+    <div className="w-full">
+      <div className="flex justify-between items-end mb-3">
+        <p className="text-xs uppercase tracking-wider text-white/50">{products.length} product{products.length > 1 ? "s" : ""}</p>
+        {products.length > 1 && (
+          <button onClick={nextCard} className="text-[10px] text-resin font-medium bg-resin/10 px-2 py-0.5 rounded border border-resin/30 uppercase tracking-widest">
+            Next {products.length - 1} ➔
+          </button>
+        )}
+      </div>
+      <div {...handlers} className={`relative w-full transition-all duration-300 ${containerHeight}`}>
+        {products.map((p, i) => {
+          let diff = i - activeIndex;
+          if (diff < 0) diff += products.length;
+
+          if (diff > 2 && products.length > 3) return null;
+
+          const isTop = diff === 0;
+          
+          return (
+            <div 
+              key={i}
+              onClick={isTop ? undefined : nextCard}
+              className="absolute top-0 left-0 w-full transition-all duration-400 ease-[cubic-bezier(0.25,0.8,0.25,1)] origin-left"
+              style={{
+                 // Fan horizontally to the right: translate X
+                 transform: `translateX(${diff * 20}px) scale(${1 - diff * 0.05})`,
+                 zIndex: 50 - diff,
+                 opacity: diff > 2 ? 0 : 1,
+                 pointerEvents: isTop ? 'auto' : 'none'
+              }}
+            >
+              <div className="shadow-[20px_0_30px_-10px_rgba(0,0,0,0.6)] rounded-xl">
+                <MenuProductCard 
+                  match={{ product: p, brand, score: 1, reasons: [], warnings: [] }} 
+                  onPay={onPay} 
+                  isExpanded={expandedIndex === i}
+                  onToggleExpand={(exp) => setExpandedIndex(exp ? i : null)}
+                  className="w-[90%]" 
+                  expandedClassName="w-[100%]"
+                />
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

@@ -64,7 +64,7 @@ export default async function OrdersPage() {
           {[
             { label: "Orders", value: totalOrders.toString() },
             { label: "Total", value: formatINR(totalSpent) },
-            { label: "Avg ETA", value: `${avgEta}m` },
+            { label: "Avg ETA", value: formatEta(avgEta) },
             { label: "Live txns", value: liveOrders.toString() },
           ].map((s) => (
             <div key={s.label} className="rounded-xl border border-border bg-noir-card p-3">
@@ -113,7 +113,7 @@ export default async function OrdersPage() {
                 <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-ink-soft">
                   <span className="flex items-center gap-1">
                     <Clock className="h-3 w-3 text-matcha" />
-                    {o.delivery_eta ? `${o.delivery_eta}m ETA` : "—"}
+                    {o.delivery_eta ? `${formatEta(o.delivery_eta)} ETA` : "—"}
                   </span>
                   <span className="text-ink-muted">
                     {new Date(o.created_at).toLocaleString("en-IN", {
@@ -157,4 +157,17 @@ function StatusBadge({ status }: { status: string }) {
     return <Badge variant="outline" className="text-[10px] text-gold">declined</Badge>;
   }
   return <Badge variant="outline" className="text-[10px] text-vermillion">{status}</Badge>;
+}
+
+function formatEta(minutes: number): string {
+  if (!minutes) return "—";
+  if (minutes < 60) return `${minutes}m`;
+  if (minutes < 1440) {
+    const hrs = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    if (mins === 0) return `${hrs}h`;
+    return `${hrs}h ${mins}m`;
+  }
+  const days = Math.round(minutes / 1440);
+  return `${days}d`;
 }

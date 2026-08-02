@@ -17,6 +17,17 @@ import type { MedicineItem, Priority } from "@/lib/types";
  *
  * The dashboard renders steps 1-4 as a live agent activity feed.
  */
+function formatEta(minutes: number): string {
+  if (!minutes) return "—";
+  if (minutes < 60) return `${minutes} min`;
+  if (minutes < 1440) {
+    const hrs = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return mins === 0 ? `${hrs} hrs` : `${hrs} hrs ${mins} min`;
+  }
+  return `${Math.round(minutes / 1440)} days`;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { items, priority, address } = (await req.json()) as {
@@ -91,7 +102,7 @@ export async function POST(req: NextRequest) {
         rationale: call.status === "no-answer"
           ? "Did not answer the call."
           : call.outcome.allInStock
-          ? `All items in stock. Verified by Senso: ${sensoData.context.replace(/\*\*/g, '')}${mapsRatingStr} Delivery in ${call.outcome.deliveryEtaMinutes} min.`
+          ? `All items in stock. Verified by Senso: ${sensoData.context.replace(/\*\*/g, '')}${mapsRatingStr} Delivery in ${formatEta(call.outcome.deliveryEtaMinutes)}.`
           : `${call.outcome.itemsAvailable}/${call.outcome.itemsTotal} items available. Verified by Senso: ${sensoData.context.replace(/\*\*/g, '')}${mapsRatingStr}`,
         call,
       };
@@ -135,7 +146,7 @@ export async function POST(req: NextRequest) {
         explanation = `${best.pharmacyName} offered the lowest total at ₹${best.total}.`;
         break;
       case "fastest":
-        explanation = `${best.pharmacyName} can deliver fastest — ${best.deliveryEtaMinutes} minutes.`;
+        explanation = `${best.pharmacyName} can deliver fastest — ${formatEta(best.deliveryEtaMinutes)}.`;
         break;
       case "closest":
         explanation = `${best.pharmacyName} is closest at ${best.distanceKm.toFixed(1)} km.`;
