@@ -6,6 +6,7 @@
 [![Prava](https://img.shields.io/badge/Powered%20By-Prava-gold)](https://prava.space)
 [![Senso](https://img.shields.io/badge/Verified%20By-Senso-blue)](https://senso.ai)
 [![OpenAI](https://img.shields.io/badge/Intelligence-OpenAI-green)](https://openai.com)
+[![Linq](https://img.shields.io/badge/Message%20Native-Linq-purple)](https://linqapp.com)
 
 ---
 
