@@ -169,6 +169,7 @@ export interface Brand {
   legal_status: "schedule_e1_prescription" | "otc_cbd" | "unregulated";
   prescription_required: boolean;
   doctor_routing?: string;
+  support_email?: string;
   licences?: { type: string; number: string }[];
   instagram_handle?: string;
   instagram_followers?: number;

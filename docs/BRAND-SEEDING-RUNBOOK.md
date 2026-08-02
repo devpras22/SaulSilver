@@ -36,10 +36,18 @@ This is the non-negotiable part. Open the site in a browser and click through:
 - **Homepage** → tagline, brand positioning, AYUSH/legal claims
 - **/products or /collections/all** → every gummy SKU they sell
 - **Each product page** → name, cannabinoid mg, ratio, pack count, price, composition, warnings, key uses, side effects, reviews
-- **Footer / About / Contact** → Instagram handle, support email, prescription flow
-- **Instagram** → follower count, engagement, post style
+- **Footer / About / Contact / Privacy Policy / Terms** → Instagram handle, **support email** (look hard — see below), prescription flow
+- **Instagram** → follower count, engagement, post style, **and read the comments** (for Senso, step 7)
 
 **Do NOT skip product pages.** Homepage marketing copy is useless for matching. The depth people actually compare on (composition %, warnings, onset time, key medical uses) only lives on the SKU page. Moon Impact's composition table (`Ashwagandha 11%, Vijaya 3%`, etc.) was on the product page, not the homepage.
+
+> **Support email — find the REAL one, don't guess.** The old behavior fabricated
+> `support@<domain>.com`, which bounces. There is now a `brands.support_email`
+> column. Look for the actual address in: footer, Contact page, About page,
+> Privacy Policy, Terms of Service, refund policy, or the order-confirmation
+> flow. Common real patterns: `care@`, `hello@`, `orders@`, `support@`. If you
+> genuinely cannot find one after checking all those pages, leave it null and
+> note it as a red flag — do NOT fabricate one.
 
 ### 3. Capture the brand-level fields
 
@@ -58,6 +66,7 @@ Every field below has an example value from Moon Impact. Match this exactly.
 | `legal_status` | enum | ✅ | `"schedule_e1_prescription"` (others: `otc_cbd`, `unregulated`) |
 | `prescription_required` | boolean | ✅ | `true` for Vijaya; `false` for CBD isolate |
 | `doctor_routing` | text | | `"Place order → doctor team calls for consultation → prescription issued if suitable → shipped after approval. Option to upload existing prescription at checkout."` |
+| `support_email` | text | ✅ | `"care@trymoonimpact.com"` — the REAL address found on the site (footer/contact/terms). Never fabricate `support@domain`. Prescription routing emails land here. |
 | `licences` | jsonb | | `[{ "type": "AYUSH", "number": "25D/55/96" }]` |
 | `instagram_handle` | text | | `"@trymoonimpact"` |
 | `instagram_followers` | integer | | `7110` |
@@ -152,7 +161,121 @@ There's no formula in code — you set it based on the research. The benchmarks 
 
 Heuristics that push the score up: AYUSH licence visible, public COA, real prescription flow, verifiable Instagram with real followers, independent reviews. Heuristics that pull it down: no licence, no COA, sketchy payment methods, unverifiable claims.
 
-### 7. Write the seed script + run it
+> **Trust_score now feeds a live Senso blend.** When the sommelier matches, this
+> static Supabase score is blended 50/50 with a grounded Senso signal queried at
+> match time (see step 7). So set the static score honestly from the structured
+> research — Senso handles the dynamic reputation layer separately.
+
+### 7. Ingest the brand into Senso (the trust context layer)
+
+**This step is required for the Senso prize track ($7,500).** Skip it and the
+sommelier falls back to the static Supabase trust_score only — no grounded
+reputation signal, no citations, weaker for judges.
+
+**What Senso is:** a knowledge base YOU feed, then query for grounded answers.
+It has NO world knowledge of its own. We ingest an unstructured reputation doc
+per brand; Senso indexes it; the sommelier queries it at match time to get a
+grounded trust answer that breaks ties between similar gummies.
+
+**Why it's separate from Supabase:** Supabase holds structured fields (price,
+mg, licence number). Senso holds the *unstructured reputation signal* — verbatim
+comments, review quotes, delivery reports — that doesn't fit cleanly in columns
+but is exactly what users compare brands on.
+
+#### 7a. Capture the deep reputation data
+
+While browsing (step 2), ALSO collect this unstructured signal. This is the data
+that makes Senso useful. Copy `scripts/seed-senso-moon-impact.ts` as the template.
+
+| Field | Where to find it | Example |
+|---|---|---|
+| `instagramComments[]` | Brand's IG posts — read the comments, grab verbatim quotes | `"Half a Stellardust knocked me out — start slow."` |
+| `reviewQuotes[]` | Product pages, Google reviews, Reddit | `"Delivery to Mumbai took 4 days, discreet packaging."` |
+| `redFlags[]` | Honest gaps — no COA, incomplete product line, legal ambiguity | `"No public Certificate of Analysis (COA)"` |
+| `licenceInfo` | Footer / About / product packaging | `"AYUSH Drug Licence No. 25D/55/96. Schedule E(1)."` |
+
+**What to capture verbatim** (judges score on source quality + traceability):
+- **Taste** — "tastes like cough syrup", "berry is the best flavor"
+- **Onset/effect** — "kicked in 20 min", "half a gummy was enough", "no hangover"
+- **Delivery time** — "took 4 days to Mumbai", "next-day in Bangalore"
+- **Packaging** — "discreet, no branding on the box", "individually wrapped"
+- **Customer support** — "doctor called within an hour", "WhatsApp reply same day"
+- **Dud batches / complaints** — "last batch was weak", "price too high to repeat"
+
+Keep them as direct quotes with attribution context (which post/review). Senso
+returns these verbatim in its grounded answers, so real quotes > paraphrasing.
+
+#### 7b. The full Senso lifecycle (every brand must complete all four stages)
+
+This is the non-negotiable sequence. Skipping any stage means the sommelier gets
+no grounded signal for that brand — it falls back to the static Supabase score.
+
+```
+  ┌─────────────┐     ┌──────────────────┐     ┌─────────────────┐     ┌──────────────────┐
+  │ 1. INGEST   │ ──> │ 2. WAIT for      │ ──> │ 3. QUERY        │ ──> │ 4. BLEND at      │
+  │ ingestBrand │     │    indexing      │     │ searchTrust     │     │ match time       │
+  │             │     │ waitUntilIndexed │     │ (verify it      │     │ (automatic, in   │
+  │ POST        │     │ (poll my-files   │     │  cites the doc) │     │  /api/match)     │
+  │ /org/kb/raw │     │  until complete) │     │                 │     │                  │
+  └─────────────┘     └──────────────────┘     └─────────────────┘     └──────────────────┘
+```
+
+| Stage | What happens | How long | If skipped |
+|---|---|---|---|
+| **1. Ingest** | Markdown doc uploaded; Senso returns `content_id` + `processing_status:"processing"` | instant | Brand invisible to Senso |
+| **2. Wait** | Senso chunks + embeds async. Poll `my-files` filtered by `content_id` until `content.processing_status === "complete"` | 5–60s | Queries return empty (index not ready) |
+| **3. Query** | `searchTrust("…")` returns `{answer, score, sources, chunks}` — verify `sources` includes your doc title | ~1s | No way to confirm ingest worked |
+| **4. Blend** | Automatic at match time: `/api/match` calls `enrichBrandsWithSensoTrust()` → 50/50 blend → ranking shifts | n/a | (happens in the live match flow) |
+
+**Stages 1–3 run in the seed script. Stage 4 runs automatically in the live app.**
+You only write code for 1–3 (copy the template); 4 is already wired in
+`src/lib/senso-trust.ts` + `src/app/api/match/route.ts`.
+
+> ⚠️ **The WAIT stage is the easy one to miss.** Senso returns `202 Accepted`
+> immediately, but the doc isn't queryable until `processing_status: "complete"`.
+> If you ingest and query in the same breath without waiting, you get empty
+> results and wrongly conclude Senso is broken. Always `await waitUntilIndexed()`.
+
+#### 7c. Run the Senso seed script
+
+```bash
+cd /Users/Pras/Documents/ClaudeCode/Hacakthons/PravaHackathon/SaulSilver
+npx tsx scripts/seed-senso-<brand-slug>.ts
+```
+
+The script (modeled on `seed-senso-moon-impact.ts`) performs all three seed-time stages:
+1. `ingestBrand({ brandName, brandSlug, licenceInfo, products, instagramComments, reviewQuotes, redFlags })` → stage 1
+2. `await waitUntilIndexed(contentId)` → stage 2 (blocks until ready)
+3. `await searchTrust("…")` → stage 3 (verify the grounded answer cites the doc)
+
+**Idempotent:** `ingestBrand()` deletes any prior doc with the same title before
+ingesting, so reseeds don't duplicate. Run it as many times as you update the data.
+
+**You must see this output before a brand counts as Senso-seeded:**
+```
+→ Ingested (content_id: …). Waiting for indexing…
+✓ Indexed.
+→ Test query: '…'
+  Answer: <a grounded answer quoting your ingested review quotes>
+  Sources: [ '<Brand Name> (SaulSilver Trust Doc)' ]
+✓ <Brand Name> trust doc live in Senso.
+```
+If `Sources` is empty or the answer is "I don't have information," the ingest
+failed or you didn't wait — re-run.
+
+#### 7d. How Senso affects the ranking (so you capture the right data)
+
+The sommelier blends trust as: `50% static Supabase trust_score + 50% Senso grounded signal`.
+Effect/taste/dose/budget ranking runs first — those always dominate. Senso only
+modulates the trust weight, breaking ties between otherwise-equal gummies and
+demoting brands with weak grounded reputation.
+
+So the deep data you capture directly controls whether a brand rises or falls in
+the final ranking. Rich, honest reputation data = Senso can meaningfully
+differentiate. Thin data = Senso returns low-confidence answers and the static
+score dominates (boring for judges).
+
+### 8. Write the Supabase seed script + run it
 
 Two options.
 
@@ -181,9 +304,55 @@ Call `researchBrand({ brandName, context, knownWebsite })` from `src/lib/researc
 
 ---
 
+## The live 14th-brand path (the self-populating catalog)
+
+The manual seed scripts above are for the 13 brands we seed ahead of time. But
+SaulSilver is also a *self-populating* catalog: if a user names a brand that
+isn't in the database yet, the agent researches it live via `researchBrand()` in
+`src/lib/research.ts`, and the next person who asks gets it instantly.
+
+**This live path must run the ENTIRE pipeline — not just the Supabase upsert.**
+A brand discovered live is worthless if it has no Senso trust doc (the sommelier
+can't ground a recommendation on it) or no support email (prescription routing
+fails or fabricates a bad address).
+
+### What the live path must do (in order)
+
+When a user says "what about [new brand]?" and it's not in the catalog:
+
+1. **Gather context** — web search results + Senso trust data for the brand name
+2. **Structure via OpenAI** (`researchBrand` already does this) → `{ brand, products, research }`
+3. **Capture `support_email`** — extract the REAL support/contact email from the gathered context (footer, contact page, terms). ⚠️ **GAP: `research.ts` does NOT currently extract this** — see "Known gaps to fix" below. Until wired in, the live path leaves `support_email` null and the prescription route falls back to the broken `support@<domain>` guess.
+4. **Upsert Supabase** — `brands` (+ support_email), `products`, `brand_research` (the agent already does this part)
+5. **Ingest into Senso** — build a `BrandTrustDoc` from the structured result + any verbatim comments/reviews in the context, then `ingestBrand()` + `waitUntilIndexed()`. ⚠️ **GAP: `research.ts` does NOT currently call the Senso ingest** — see below.
+6. **Confirm** with a `searchTrust()` verification query
+
+### Known gaps to fix in `research.ts` (flag for whoever wires the live path)
+
+Both gaps mean the live path currently produces an *incomplete* brand record.
+The manual seed scripts (Option A) already do the right thing — these gaps are
+specifically in the automated `researchBrand()` function:
+
+| Gap | Current behavior | Required behavior |
+|---|---|---|
+| **No `support_email` extraction** | The OpenAI `brandSchema` has no email field; `support_email` is left null → prescription route fabricates `support@<domain>` | Add `support_email` to the schema; instruct the model to extract the real address from context, or null if not found (never fabricate) |
+| **No Senso ingest** | `researchBrand()` returns structured data but never calls `ingestBrand()` → new brands have no grounded trust signal | After the Supabase upsert, build a `BrandTrustDoc` and call `ingestBrand()` + `waitUntilIndexed()` |
+
+**Bottom line for whoever implements this:** the live path is not "just call
+`researchBrand`." It's "call `researchBrand`, then make sure support_email and
+Senso ingest also happen before the brand is considered fully added." The
+manual seed runbook (steps 1–8) is the spec for what "fully added" means —
+the live path must reach the same end state.
+
+---
+
 ## Validation bar (done = passes all these)
 
+**Applies to BOTH paths** — the manual seed scripts (Option A) AND the live
+14th-brand path (`researchBrand`). A brand isn't "added" until every box is checked.
+
 - [ ] `brands` row: all ✅ fields filled, `trust_score` between 0 and 1, `last_researched` set
+- [ ] `brands.support_email`: the REAL address found on the site (footer/contact/terms) — never `support@<domain>` fabricated
 - [ ] `products`: one row per SKU on the website (don't miss SKUs hidden in collections)
 - [ ] `products.effect_tags`: every tag is from the controlled vocab (no typos, no invented tags)
 - [ ] `products.price_inr`: integer in whole rupees (no decimals, no ₹ symbol)
@@ -191,6 +360,10 @@ Call `researchBrand({ brandName, context, knownWebsite })` from `src/lib/researc
 - [ ] `brand_research.findings.red_flags`: at least one honest gap listed (no brand is perfect)
 - [ ] `brand_research.sources`: real URLs you actually visited
 - [ ] Run `npx tsx scripts/seed-<brand-slug>.ts` — confirms "✓ Seeded X — N products"
+- [ ] **Senso ingest**: `instagramComments[]` and `reviewQuotes[]` contain ≥3 verbatim quotes each (real text, not paraphrase)
+- [ ] **Senso ingest**: run `npx tsx scripts/seed-senso-<brand-slug>.ts` — confirms "✓ Indexed" + the test query returns a grounded answer citing the doc
+- [ ] **Senso wait**: `waitUntilIndexed()` was awaited before any query (no querying against an unfinished index)
+- [ ] **Live path only**: `research.ts` was updated to extract `support_email` + call `ingestBrand()` (see "Known gaps" above) — otherwise the live path produces incomplete records
 
 ---
 

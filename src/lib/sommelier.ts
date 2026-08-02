@@ -19,6 +19,7 @@ import type {
   Tolerance,
   UserProfile,
 } from "./types";
+import { getSensoContext } from "./senso-trust";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TOLERANCE → DOSE COMPATIBILITY
@@ -225,6 +226,15 @@ function buildReasons(
   }
   if (brand.packaging_notes) {
     reasons.push(brand.packaging_notes);
+  }
+
+  // Senso grounded trust — surface the citation so judges see Senso's effect.
+  // (Senso context is stashed on the brand by enrichBrandsWithSensoTrust.)
+  const senso = getSensoContext(brand);
+  if (senso.context && senso.context.length > 0 && !senso.context.startsWith("Senso not configured")) {
+    // One-line grounded excerpt — the reputation signal Senso contributed.
+    const excerpt = senso.context.replace(/\*\*/g, "").slice(0, 120);
+    reasons.push(`Senso: ${excerpt}${senso.context.length > 120 ? "…" : ""}`);
   }
 
   // Price per gummy

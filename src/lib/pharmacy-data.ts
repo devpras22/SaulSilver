@@ -1,5 +1,5 @@
 import type { MedicineItem, PharmacyQuote } from "./types";
-import { getPharmacyTrustContext } from "./senso";
+import { getBrandTrustScore as getPharmacyTrustContext } from "./senso";
 
 /**
  * Mock pharmacy dataset — represents what the Discovery Agent would

@@ -86,6 +86,7 @@ export async function POST(req: NextRequest) {
           legal_status: result.brand.legal_status,
           prescription_required: result.brand.prescription_required,
           doctor_routing: result.brand.doctor_routing,
+          support_email: result.brand.support_email ?? null,
           instagram_handle: result.brand.instagram_handle ?? null,
           instagram_followers: result.brand.instagram_followers ?? null,
           instagram_engagement: result.brand.instagram_engagement ?? null,

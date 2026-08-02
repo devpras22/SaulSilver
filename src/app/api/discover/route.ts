@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { geocode, findNearbyPharmacies, IS_MOCK_MAPS, type Pharmacy } from "@/lib/maps";
 import { simulateCall } from "@/lib/call-simulator";
-import { getPharmacyTrustContext } from "@/lib/senso";
+import { getBrandTrustScore as getPharmacyTrustContext } from "@/lib/senso";
 import type { MedicineItem, Priority } from "@/lib/types";
 
 /**

@@ -3,9 +3,10 @@
  *
  * The self-populating catalog engine. Given a brand name:
  *   1. Gathers raw context (web search results + Senso trust data)
- *   2. Asks OpenAI to structure it into a Brand + its Products
+ *   2. Asks OpenAI to structure it into a Brand + its Products (+ support_email)
  *   3. Asks OpenAI for a research verdict (verified / caution / avoid)
- *   4. Upserts everything to Supabase (brands, products, brand_research)
+ *   4. Ingests the brand into Senso as a trust doc (best-effort)
+ * (The caller — /api/research — then upserts everything to Supabase.)
  *
  * The catalog grows itself. A judge drops a 14th brand → SaulSilver
  * researches it live → next person who asks gets it instantly.
@@ -15,7 +16,7 @@
 
 import OpenAI from "openai";
 import type { Brand, BrandResearch, CannabisProduct } from "./types";
-import { getPharmacyTrustContext } from "./senso";
+import { getBrandTrustScore, ingestBrand, isSensoConfigured } from "./senso";
 
 const openai = process.env.OPENAI_API_KEY
   ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
@@ -56,6 +57,11 @@ const brandSchema = {
     doctor_routing: {
       type: "string",
       description: "How their in-house doctor / prescription flow works, if any",
+    },
+    support_email: {
+      type: "string",
+      description:
+        "The brand's REAL customer support / contact email as found on the site (footer, Contact page, About, Privacy Policy, Terms, or refund policy). Common patterns: care@, hello@, orders@, support@. CRITICAL: only return an address you actually saw in the context — NEVER fabricate support@<domain>. Return empty string if no real address is present in the context.",
     },
     instagram_handle: { type: "string", description: "@handle, or empty if none found" },
     instagram_followers: { type: "integer", description: "Follower count if discoverable, 0 if unknown" },
@@ -202,9 +208,10 @@ trust_score: 0.9+ = clearly legit with lab tests; 0.6-0.9 = probably legit but g
     : {};
 
   // ── Step 3: Senso trust signal (additional context) ──
-  const senso = await getPharmacyTrustContext(structureArgs.name ?? input.brandName).catch(() => ({
+  const senso = await getBrandTrustScore(structureArgs.name ?? input.brandName).catch(() => ({
     score: 0.5,
     context: "Senso unavailable",
+    sources: [] as string[],
   }));
 
   // ── Assemble the result ──
@@ -224,6 +231,10 @@ trust_score: 0.9+ = clearly legit with lab tests; 0.6-0.9 = probably legit but g
     legal_status: structureArgs.legal_status ?? "schedule_e1_prescription",
     prescription_required: structureArgs.prescription_required ?? true,
     doctor_routing: structureArgs.doctor_routing,
+    // support_email: only set if OpenAI extracted a real one — never fabricate.
+    support_email: typeof structureArgs.support_email === "string" && structureArgs.support_email.trim()
+      ? structureArgs.support_email.trim()
+      : undefined,
     instagram_handle: structureArgs.instagram_handle || undefined,
     instagram_followers: structureArgs.instagram_followers || undefined,
     trust_score: blendedTrust,
@@ -271,7 +282,59 @@ trust_score: 0.9+ = clearly legit with lab tests; 0.6-0.9 = probably legit but g
     trust_score: blendedTrust,
   };
 
+  // ── Senso trust ingest (the self-populating catalog must feed Senso too) ──
+  // Without this, a live-discovered brand has no grounded trust signal and the
+  // sommelier can't reason over its reputation. Best-effort: never fail the
+  // whole research if Senso is unavailable or hiccups. See BRAND-SEEDING-RUNBOOK
+  // § "live 14th-brand path".
+  await ingestResearchIntoSenso({ brand, products, research }).catch((e) => {
+    console.warn(`[research] Senso ingest failed for "${brand.name}" (continuing — brand still saved to Supabase):`, e instanceof Error ? e.message : e);
+  });
+
   return { brand, products, research, sources: research.sources };
+}
+
+/**
+ * Ingest a freshly-researched brand into Senso as a trust doc.
+ * Builds a BrandTrustDoc from the structured research result + the raw context
+ * (which contains verbatim reviews/comments the model parsed into reviews_summary).
+ * Idempotent — ingestBrand deletes any prior doc with the same title first.
+ */
+async function ingestResearchIntoSenso(args: {
+  brand: Brand;
+  products: CannabisProduct[];
+  research: { findings: { license?: string; reviews_summary?: string; red_flags?: string[]; summary: string }; sources: string[] };
+}): Promise<void> {
+  if (!isSensoConfigured()) return; // Fast path — no key, skip cleanly.
+
+  const { brand, products, research } = args;
+
+  await ingestBrand({
+    brandName: brand.name,
+    brandSlug: brand.id,
+    website: brand.website,
+    summary: brand.description ?? research.findings.summary,
+    licenceInfo: research.findings.license ?? (brand.licences?.length ? brand.licences.map((l) => `${l.type}: ${l.number}`).join(", ") : undefined),
+    products: products.map((p) => ({
+      name: p.name,
+      cannabinoids: [
+        p.cannabinoids.total_extract_mg ? `${p.cannabinoids.total_extract_mg}mg total extract` : "",
+        p.cannabinoids.thc_mg ? `${p.cannabinoids.thc_mg}mg THC` : "",
+        p.cannabinoids.cbd_mg ? `${p.cannabinoids.cbd_mg}mg CBD` : "",
+      ].filter(Boolean).join(", ") || undefined,
+      priceInr: p.price_inr,
+      flavor: p.flavor,
+      keyUses: p.key_uses,
+    })),
+    // reviews_summary is the model's digest of what users said — better than
+    // nothing for Senso to ground on. Real verbatim quotes come from the manual
+    // seed scripts (which have a human reading the actual IG comments).
+    reviewQuotes: research.findings.reviews_summary ? [research.findings.reviews_summary] : [],
+    redFlags: research.findings.red_flags,
+  });
+  // Note: we do NOT call waitUntilIndexed here — the live path shouldn't block
+  // the user ~30s on Senso indexing. The doc lands async and is queryable
+  // within a minute. The match flow degrades gracefully to static trust meanwhile.
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
