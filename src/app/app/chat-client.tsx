@@ -1373,6 +1373,26 @@ function MessageBubble({
 
   if (message.kind === "brand_pills" && message.data) {
     const { brands } = message.data as { brands: Brand[] };
+    // Only show the 12 curated brands we actively track — live-researched
+    // brands (Apple Watch, Sanan Relief, teenage engineering, etc.) should
+    // NOT appear as quick-pick pills. Match case-insensitively on name.
+    const CURATED_BRANDS = [
+      "Cannazo",
+      "Qurist",
+      "Cure By Design",
+      "Kushiva",
+      "Magiccann",
+      "Andyou",
+      "Moon Impact",
+      "Cannavedic",
+      "Hebe Wellness",
+      "Polyherbs",
+      "The Trost",
+      "Medicann",
+    ];
+    const curated = brands.filter((b) =>
+      CURATED_BRANDS.some((name) => name.toLowerCase() === b.name.toLowerCase())
+    );
     return (
       <div className="flex items-start gap-3 animate-fade-in-up mt-2">
         <Avatar />
@@ -1381,7 +1401,7 @@ function MessageBubble({
             {message.content}
           </div>
           <div className="flex flex-wrap gap-2 max-w-[85%]">
-            {brands.map((b) => (
+            {curated.map((b) => (
               <button
                 key={b.id}
                 onClick={() => onVerify(b.name)}
