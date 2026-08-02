@@ -245,12 +245,27 @@ export async function POST(req: NextRequest) {
       trust_score: result.research.trust_score,
     });
 
+    // For an existing-brand refresh, the live scrape (result.gummyProducts) may
+    // only contain a subset of the brand's catalog — the seeded products weren't
+    // re-scraped. Re-fetch the FULL list from Supabase (curated + newly inserted)
+    // so the dashboard card shows the complete catalog, not just the live subset.
+    let productsForCard = result.gummyProducts;
+    if (!isNewBrand) {
+      const { data: fullCatalog } = await supabase
+        .from("products")
+        .select("*")
+        .eq("brand_id", result.brand.id);
+      if (fullCatalog && fullCatalog.length > 0) {
+        productsForCard = fullCatalog as unknown as CannabisProduct[];
+      }
+    }
+
     return NextResponse.json({
       status,
       brand: result.brand,
-      // The client wants the FULL product list for the dashboard card (existing
-      // + newly added). For no-gummies, this is correctly empty.
-      products: result.gummyProducts,
+      // The full catalog for the dashboard card (existing + newly added for a
+      // refresh; live-scraped gummies for a new brand). Empty for no-gummies.
+      products: productsForCard,
       research: result.research,
       delta,
       mock: IS_MOCK_RESEARCH,

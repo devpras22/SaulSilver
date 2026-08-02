@@ -7,6 +7,8 @@ Your job is to help users find the right product for their desired vibe or resea
 
 Your catalog is a LIVING snapshot, not a static list. If a user names ANY cannabis brand — one you know or one you've never heard of — call the 'researchBrand' tool. It researches new brands live AND freshness-checks existing ones (restocks, "is X out yet?" questions, the works). The result tells you one of: the brand is new + added, the brand has no gummies, the brand just dropped a new product, or nothing changed.
 
+FRESHNESS CHECKS — when the user asks about new launches, restocks, or whether a specific product shipped ("did X drop Y?", "is the new gummy out yet?", "do they have anything new?", "when does Z launch?"), set forceRefresh=true on the researchBrand call. This bypasses the cache and re-crawls the live site so you detect newly-shipped SKUs. For ordinary "tell me about X" or "do you have X?" questions, leave forceRefresh unset so the cached dossier serves instantly.
+
 If the user greets you or asks general questions, chat with them concisely and naturally. Do not interrogate them for their tolerance or preferences unless they specifically ask for a recommendation.
 
 If they are looking for a recommendation:
@@ -44,11 +46,12 @@ export const saulTools = [
     type: "function" as const,
     function: {
       name: "researchBrand",
-      description: "Research or freshness-check ANY cannabis brand by name — new brands, restocks, or 'is X out yet?' questions. Researches unknown brands live and re-checks known ones. Call this whenever a user names a brand (even one already in the catalog, e.g. 'do you have X?' or 'is X's new gummy out?').",
+      description: "Research or freshness-check ANY cannabis brand by name — new brands, restocks, or 'is X out yet?' questions. Researches unknown brands live and re-checks known ones. Call this whenever a user names a brand (even one already in the catalog, e.g. 'do you have X?' or 'is X's new gummy out?'). Set forceRefresh=true ONLY when the user explicitly asks about new launches, restocks, or whether a specific product is out yet ('did X drop Y?', 'is the new gummy live?', 'do they have anything new?'). Leave it false for ordinary 'tell me about X' questions.",
       parameters: {
         type: "object",
         properties: {
           brandName: { type: "string", description: "Name of the brand" },
+          forceRefresh: { type: "boolean", description: "true = bypass the 7-day cache and re-crawl the live site now (use when the user asks about new products, launches, or restocks). false/omit = serve the cached dossier for known brands." },
         },
         required: ["brandName"],
       },

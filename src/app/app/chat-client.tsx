@@ -277,12 +277,17 @@ export default function AppChat({
             await runMatch({ ...args, intent: "match", region: "IN" });
           } else if (tool.function.name === "researchBrand") {
             const args = JSON.parse(tool.function.arguments);
-            pushAssistant(`Sure, pulling up the dossier on ${args.brandName}...`, "text");
+            pushAssistant(
+              args.forceRefresh
+                ? `Sure, re-checking ${args.brandName}'s site live for anything new...`
+                : `Sure, pulling up the dossier on ${args.brandName}...`,
+              "text"
+            );
             // If the user pasted a URL in their message, pass it through so the
             // research uses that exact site (skips discovery, avoids wrong-TLD).
             const lastUser = [...messages].reverse().find((m) => m.role === "user");
             const urlMatch = lastUser?.content?.match(/https?:\/\/[^\s)]+/i);
-            await verifyBrand(args.brandName, urlMatch?.[0]);
+            await verifyBrand(args.brandName, urlMatch?.[0], args.forceRefresh === true);
           }
         }
       } else if (data.content) {
@@ -375,19 +380,18 @@ export default function AppChat({
   // One endpoint, five outcomes. The status field drives which card renders:
   //   no-gummies / unchanged  → research_status card (honest decline / freshness)
   //   added / refreshed / cached → dashboard card (the full brand report)
-  const verifyBrand = async (brandName: string, website?: string) => {
+  const verifyBrand = async (brandName: string, website?: string, forceRefresh?: boolean) => {
     setBusy(true);
     pushAssistant(`Looking into ${brandName}…`, "thinking");
     try {
       const res = await fetch("/api/research", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // Default to cache for known brands → shows the curated dossier with its
-        // hand-scored verdict (verified/caution/etc.). forceRefresh is reserved
-        // for an explicit freshness check ("is X's new gummy out yet?") so we
-        // don't let a live OpenAI re-snap overwrite a curated verdict.
-        // If a URL was passed (user pasted one), include it so discovery is skipped.
-        body: JSON.stringify(website ? { brandName, website } : { brandName }),
+        // forceRefresh bypasses the 7-day cache so a freshness check ("is X's new
+        // gummy out yet?") actually re-crawls the live site. Without it, known
+        // brands serve the cached curated dossier. The /api/research route keeps
+        // the additive-only rule — refresh never deletes seeded products.
+        body: JSON.stringify({ brandName, ...(website ? { website } : {}), ...(forceRefresh ? { forceRefresh: true } : {}) }),
       });
       const data = await res.json();
       setMessages((m) => m.filter((msg) => msg.kind !== "thinking"));
