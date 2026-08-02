@@ -54,11 +54,28 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, reason: "unparseable" });
     }
 
-    const { from, text, chatId } = parsed;
+    const { from, text, chatId, messageId } = parsed;
     activeChatId = chatId;
 
     // FETCH OR INITIALIZE PERSISTENT STATE (Supabase, not in-memory).
     const state: ConvoState = await loadConvo(from);
+
+    // ── IDEMPOTENCY GUARD (the real "three bubbles" fix) ──
+    // This webhook does 10-20s of work (2 OpenAI calls, Senso, Supabase,
+    // image fetches, sendMessage) before returning 200. Linq times out and
+    // RETRIES while the first invocation is still running — each retry
+    // reprocessed the same inbound message and sent a fresh image+text,
+    // producing 2-3 identical responses. So: if this messageId was already
+    // marked as processed, return 200 instantly and do nothing. First fire
+    // marks + runs; concurrent retries see the mark and no-op.
+    if (messageId && state.lastInboundMessageId === messageId) {
+      console.log(`[linq/webhook] duplicate delivery ${messageId} — skipping (already processing)`);
+      return NextResponse.json({ ok: true, deduplicated: true });
+    }
+    if (messageId) {
+      state.lastInboundMessageId = messageId;
+      await saveConvo(state); // mark IMMEDIATELY, before any slow work
+    }
 
     // Update chatId just in case it changed
     if (chatId) state.chatId = chatId;
@@ -257,23 +274,21 @@ export async function POST(req: NextRequest) {
         await saveConvo(state);
 
         const saulText = saulResponse.content || `found ${topResults.length} options for you. reply ${optionsText} to cop one`;
-        
-        // Send images as photo dump
-        const parts: MessagePart[] = [];
-        topResults.forEach((match) => {
+
+        // IMAGE FIRST, then text — how a friend sends a rec. Two separate
+        // sendMessage calls because Linq splits a multi-part blob into separate
+        // bubbles anyway; sending them explicitly keeps the order predictable.
+        const images: MessagePart[] = topResults.map((match) => {
           const imgPath = productImage(match.brand.id, match.product.name, match.product.image_url);
           const absoluteImgUrl = imgPath.startsWith("http") ? imgPath : `${origin}${imgPath}`;
-          parts.push({ type: "media", url: absoluteImgUrl });
+          return { type: "media", url: absoluteImgUrl };
         });
-        
-        // Add Saul's text as the last part
-        parts.push({ type: "text", value: saulText });
-        
-        await sendMessage({
-          to: from,
-          chatId,
-          parts,
-        });
+        if (images.length > 0) {
+          await sendMessage({ to: from, chatId, parts: images });
+        }
+
+        // Then Saul's text reply.
+        await sendMessage({ to: from, chatId, text: saulText });
         
         // Store recommendations for selection
         state.pendingRecommendations = topResults;
@@ -358,18 +373,16 @@ export async function POST(req: NextRequest) {
         state.messages.push(saulResponse);
         
         if (topResults.length > 0) {
-          // Send images as photo dump
-          const parts: MessagePart[] = [];
-          topResults.forEach((match) => {
+          // IMAGE FIRST, then text — see matchProducts branch for rationale.
+          const images: MessagePart[] = topResults.map((match) => {
             const imgPath = productImage(match.brand.id, match.product.name, match.product.image_url);
             const absoluteImgUrl = imgPath.startsWith("http") ? imgPath : `${origin}${imgPath}`;
-            parts.push({ type: "media", url: absoluteImgUrl });
+            return { type: "media", url: absoluteImgUrl };
           });
-          
-          // Add Saul's text as the last part
-          parts.push({ type: "text", value: saulResponse.content || `found some options. reply ${optionsText} to cop one` });
-          
-          await sendMessage({ to: from, chatId, parts });
+          if (images.length > 0) {
+            await sendMessage({ to: from, chatId, parts: images });
+          }
+          await sendMessage({ to: from, chatId, text: saulResponse.content || `found some options. reply ${optionsText} to cop one` });
           
           // Store recommendations for selection
           state.pendingRecommendations = topResults;

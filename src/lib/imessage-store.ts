@@ -28,6 +28,10 @@ export interface ConvoState {
   chatId: string;
   messages: OpenAI.Chat.ChatCompletionMessageParam[];
   pendingRecommendations?: PendingRec[];
+  /** Last inbound Linq messageId we processed — used for idempotency so a
+   * retried webhook delivery (fired while the first one is still running)
+   * doesn't produce a second/third identical response. */
+  lastInboundMessageId?: string;
 }
 
 type RecRow = {
@@ -35,6 +39,7 @@ type RecRow = {
   chat_id: string | null;
   messages: unknown;
   pending_recs: unknown;
+  last_inbound_message_id: string | null;
 };
 
 /** Load a convo by sender phone, or return a fresh empty state. */
@@ -60,6 +65,7 @@ export async function loadConvo(phone: string): Promise<ConvoState> {
     chatId: row.chat_id ?? "",
     messages: (row.messages as OpenAI.Chat.ChatCompletionMessageParam[]) ?? [],
     pendingRecommendations: pending,
+    lastInboundMessageId: row.last_inbound_message_id ?? undefined,
   };
 }
 
@@ -72,6 +78,7 @@ export async function saveConvo(state: ConvoState): Promise<void> {
       chat_id: state.chatId || null,
       messages: state.messages as unknown as Record<string, unknown>,
       pending_recs: (state.pendingRecommendations ?? null) as unknown as Record<string, unknown>,
+      last_inbound_message_id: state.lastInboundMessageId ?? null,
       updated_at: new Date().toISOString(),
     },
     { onConflict: "phone" }

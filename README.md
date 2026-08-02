@@ -157,6 +157,19 @@ this README stays stable. Summary:
   This is grinding per-combination work, not one clever fix.
 - **🟡 Moon Impact cannot accept payments** — `trymoonimpact.com/checkout`
   shows *"This store can't accept payments right now."* Dead as a demo target.
+- **🟡 iMessage can't close the checkout loop in the blue bubble** — The full
+  autonomous checkout (Stagehand headless browser + live OTP/status UI + Prava
+  card fill in Cashfree iframes) lives on the **web** path. The iMessage path
+  sends Prava's `iframe_url` as a Rich Link; the user pays in **Safari**, and
+  then the loop can't return to iMessage — there's no URL that lands you back in
+  Messages, so "Payment successful → redirect" (which works on web via
+  `callback_url` → `/app`) structurally cannot work on iMessage. The ideal UX is
+  a Prava iMessage app extension rendering an in-bubble bottom sheet (App Clip)
+  so checkout never leaves the blue bubble — that needs Prava to ship the
+  extension. Until then: **web = full autonomous-checkout demo; iMessage =
+  native payment link in the blue bubble + cron-fired receipt text.** The
+  agent-driven merchant checkout is proven on web; iMessage is the distribution
+  surface.
 
 ## 📜 Disclaimer
 *For legal markets only. Not medical advice. Not a seller. SaulSilver is a discovery, trust, and orchestration layer.*

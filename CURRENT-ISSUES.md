@@ -97,6 +97,45 @@ selectors are not.
 
 ---
 
+## 🟡 Known — iMessage can't close the checkout loop in the blue bubble
+
+**Status:** Architectural limitation of the iMessage path. Documented for
+honesty, not a bug to "fix" without a Prava Messages extension.
+
+The web app's full autonomous checkout — Stagehand headless browser navigating
+the real merchant site, the live OTP/status UI, the one-time Prava card fill in
+the nested Cashfree iframes, the captured decline — lives entirely on the
+**web** path (`/api/checkout/automate` + the `checkout_otp_handoff` status
+poll). The iMessage path does NOT replicate it.
+
+What the iMessage path does today: sends Prava's `iframe_url` as a Rich Link.
+The user taps it, **Safari opens**, they pay on Prava's hosted checkout page,
+and then... the loop can't close inside iMessage. Two compounding reasons:
+
+1. **No redirect back into iMessage.** Prava's hosted checkout has a
+   `callback_url` that redirects the browser tab on completion. On the web app
+   that redirects back to `/app`. But there is no URL that lands a user back in
+   the Messages app — iMessage isn't a web destination. So "Payment successful →
+   redirect" works on web, and structurally cannot work on iMessage.
+2. **No agent-driven merchant checkout from iMessage.** The autonomous
+   Stagehand checkout is triggered by the web client (`onPaid` →
+   `/api/checkout/automate`). The iMessage webhook never calls it. So even after
+   the user pays on Prava, no agent drives the merchant site from iMessage.
+
+**The ideal UX (the honest roadmap answer):** a Prava Messages app extension
+that renders an in-bubble bottom sheet (an App Clip / iMessage app), so the
+whole checkout — card entry, passkey, confirmation — stays inside the blue
+bubble and never opens Safari. That's the only way to make iMessage commerce
+feel native end-to-end. Until Prava ships that extension, the iMessage path
+surfaces a native payment link but can't complete the full agent checkout loop.
+
+**Honest hackathon framing:** web app = full autonomous-checkout demo (with the
+live OTP/status UI). iMessage = native payment link in the blue bubble, with a
+cron-fired receipt text on Prava-session completion. The agent-driven merchant
+checkout is proven on web; the iMessage path is the distribution surface.
+
+---
+
 ## 🟡 Known — Moon Impact cannot accept payments
 
 **Status:** Confirmed dead as a demo target.
