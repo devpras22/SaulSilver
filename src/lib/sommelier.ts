@@ -166,13 +166,17 @@ export function matchProducts(
     }
   });
 
-  return scored.map((m) => ({
-    product: m.product,
-    brand: m.brand,
-    score: m.score,
-    reasons: buildReasons(m, profile),
-    warnings: m.dose.warning ? [m.dose.warning] : undefined,
-  }));
+  return scored.map((m) => {
+    const senso = getSensoContext(m.brand);
+    return {
+      product: m.product,
+      brand: m.brand,
+      score: m.score,
+      reasons: buildReasons(m, profile),
+      warnings: m.dose.warning ? [m.dose.warning] : undefined,
+      sensoContext: (senso.context && !senso.context.startsWith("Senso not configured")) ? senso.context : undefined,
+    };
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -229,13 +233,7 @@ function buildReasons(
   }
 
   // Senso grounded trust — surface the citation so judges see Senso's effect.
-  // (Senso context is stashed on the brand by enrichBrandsWithSensoTrust.)
-  const senso = getSensoContext(brand);
-  if (senso.context && senso.context.length > 0 && !senso.context.startsWith("Senso not configured")) {
-    // One-line grounded excerpt — the reputation signal Senso contributed.
-    const excerpt = senso.context.replace(/\*\*/g, "").slice(0, 120);
-    reasons.push(`Senso: ${excerpt}${senso.context.length > 120 ? "…" : ""}`);
-  }
+  // (Senso context is now safely passed out via match.sensoContext instead of tiny reason badges)
 
   // Price per gummy
   const perGummy = Math.round(product.price_inr / product.pack_count);

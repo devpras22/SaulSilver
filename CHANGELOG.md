@@ -18,6 +18,8 @@
 - **Conversational UX (Website & SMS):** Rewrote Saul's core LLM prompt to stop strictly interrogating users for tolerance and ratio. Saul now gracefully handles partial requests (e.g. "I need a gummy for sleep") and searches immediately.
 - **Dynamic Reasoning (Website):** Saul now verbally speaks a dynamic summary citing the Senso Instagram/trust quotes in a text bubble right before sliding out the product cards. 
 - **Rich iMessage Links (Linq):** Updated the Linq SMS webhook to send native iMessage App Attachments (using `type: "link"`) instead of raw text blobs, and enriched the SMS payload to include the Senso trust quotes.
+- **UI/UX Polish:** Increased product card height on desktop for better presence and upgraded the desktop chat view to use the swipeable `MobileRolodex` layout. The Order CTA button was restyled to a centered, glassmorphic design that cleanly shows both price and medical consultation status.
+- **Senso Trust UI:** Extracted the 500-word Markdown Senso Trust Analysis from the `reasons` badge pill. It now renders beautifully with a lightweight native React markdown parser inside a collapsed-by-default container within the Overview tab.
 
 ## 2026-08-02
 - **Critical Fix — Card Rendering Regression:** Removed an early `return` in `MessageBubble` (introduced by the UI overhaul) that was rendering *every* assistant message as a plain text bubble. Restored the Location Verified card, PriorityPicker, Prava payment iframe (PaymentCard), ConfirmationCard, RecommendationCard, and AgentDashboard.

@@ -1062,9 +1062,9 @@ function MenuProductCard({
   return (
     <Card 
       onClick={() => setExpanded(true)}
-      className={`shrink-0 snap-start cursor-pointer overflow-hidden border-white/10 bg-black/40 backdrop-blur-md transition-all hover:border-resin/40 hover:-translate-y-1 hover:shadow-xl group relative shadow-lg ${className || 'w-56'}`}
+      className={`shrink-0 snap-start cursor-pointer overflow-hidden border-white/10 bg-black/40 backdrop-blur-md transition-all hover:border-resin/40 hover:-translate-y-1 hover:shadow-xl group relative shadow-lg ${className || 'w-56 sm:w-64'}`}
     >
-      <div className="h-36 w-full bg-gradient-to-b from-resin/5 to-black/60 relative overflow-hidden border-b border-white/10">
+      <div className="h-36 sm:h-52 w-full bg-gradient-to-b from-resin/5 to-black/60 relative overflow-hidden border-b border-white/10">
         <div className="absolute inset-0 flex items-center justify-center">
           <img 
             src={`/products/${brand.id}/${product.name.replace(/[^a-z0-9]/gi, '-').toLowerCase()}.jpg`}
@@ -1084,7 +1084,7 @@ function MenuProductCard({
           </span>
         </div>
       </div>
-      <CardContent className="p-4 flex flex-col justify-between h-[110px]">
+      <CardContent className="p-4 flex flex-col justify-between h-[110px] sm:h-[130px]">
         <div>
           <h4 className="mb-2 text-base font-semibold text-white line-clamp-1 drop-shadow-sm" title={product.name}>{cleanName}</h4>
           <div className="flex flex-wrap gap-1.5 text-xs text-white/70">
@@ -1109,20 +1109,43 @@ function RecommendationList({
   onPay: (product: CannabisProduct, brand: Brand) => void;
 }) {
   return (
-    <div className="space-y-4 animate-fade-in-up">
-      <div className="flex items-start gap-3">
-        <Avatar />
-        <div className="w-full max-w-[88%]">
-          <p className="mb-3 text-sm text-ink-soft">
-            {matches.length === 1 ? "One match." : `${matches.length} on the menu.`} Here's how they stack up.
-          </p>
-          {matches.map((m, i) => (
-            <ProductCard key={i} match={m} rank={i} onPay={onPay} />
-          ))}
+    <div className="mt-2 animate-fade-in-up w-full">
+      <div className="flex w-full items-start gap-3">
+        {/* Invisible spacer to align with avatar chat bubbles */}
+        <div className="w-8 shrink-0" />
+        <div className="w-full max-w-full">
+           <MobileRolodex matches={matches} onPay={onPay} />
         </div>
       </div>
     </div>
   );
+}
+function parseMarkdown(text: string) {
+  return text.split('\n').map((line, i) => {
+    if (line.startsWith('## ')) {
+      return <h4 key={i} className="text-leaf font-semibold mt-4 mb-2 tracking-wide uppercase text-[11px]">{line.replace('## ', '')}</h4>;
+    }
+    if (line.startsWith('- ')) {
+      const bulletText = line.replace('- ', '');
+      const boldParsed = bulletText.split(/(\*\*.*?\*\*)/g).map((part, j) => {
+        if (part.startsWith('**') && part.endsWith('**')) {
+          return <strong key={j} className="text-white font-medium">{part.slice(2, -2)}</strong>;
+        }
+        return part;
+      });
+      return <li key={i} className="ml-4 list-disc marker:text-leaf/50 mb-1 leading-relaxed">{boldParsed}</li>;
+    }
+    if (line.trim() === '') {
+      return <div key={i} className="h-2" />;
+    }
+    const pBoldParsed = line.split(/(\*\*.*?\*\*)/g).map((part, j) => {
+      if (part.startsWith('**') && part.endsWith('**')) {
+        return <strong key={j} className="text-white font-medium">{part.slice(2, -2)}</strong>;
+      }
+      return part;
+    });
+    return <p key={i} className="mb-2 leading-relaxed">{pBoldParsed}</p>;
+  });
 }
 
 function ProductCard({
@@ -1137,6 +1160,7 @@ function ProductCard({
   onClose?: () => void;
 }) {
   const [tab, setTab] = useState<"overview" | "medical" | "safety">("overview");
+  const [sensoExpanded, setSensoExpanded] = useState(false);
   const { product, brand, reasons, warnings } = match;
   const perGummy = Math.round(product.price_inr / product.pack_count);
 
@@ -1147,7 +1171,7 @@ function ProductCard({
       )}
       <CardContent className="p-0">
         <div 
-          className={`h-44 w-full bg-gradient-to-b from-resin/10 to-black/80 flex flex-col justify-end p-4 relative overflow-hidden ${onClose ? 'cursor-pointer hover:from-resin/20 transition-all' : ''}`}
+          className={`h-56 sm:h-72 w-full bg-gradient-to-b from-resin/10 to-black/80 flex flex-col justify-end p-4 relative overflow-hidden ${onClose ? 'cursor-pointer hover:from-resin/20 transition-all' : ''}`}
           onClick={onClose}
         >
            {/* Product Image */}
@@ -1193,7 +1217,7 @@ function ProductCard({
           ))}
         </div>
 
-        <div className="p-4 h-[160px] overflow-y-auto scrollbar-hide text-white/80 text-xs">
+        <div className="p-4 h-[180px] sm:h-[260px] overflow-y-auto scrollbar-hide text-white/80 text-xs">
           {tab === "overview" && (
             <div className="space-y-3 animate-fade-in-up">
               <div className="flex flex-wrap gap-2">
@@ -1203,6 +1227,26 @@ function ProductCard({
               </div>
               {product.key_uses && (
                 <p className="text-white/90 leading-relaxed"><strong>Best for:</strong> {product.key_uses}</p>
+              )}
+              {match.sensoContext && (
+                <div className="pt-3 border-t border-white/10 mt-2">
+                  <button 
+                    onClick={() => setSensoExpanded(!sensoExpanded)}
+                    className="flex w-full items-center justify-between mb-2 group"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Shield className="h-4 w-4 text-leaf" />
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-leaf group-hover:text-leaf-light transition-colors">Senso Trust Analysis</span>
+                    </div>
+                    {sensoExpanded ? <ChevronUp className="h-4 w-4 text-white/40 group-hover:text-white/70" /> : <ChevronDown className="h-4 w-4 text-white/40 group-hover:text-white/70" />}
+                  </button>
+                  
+                  {sensoExpanded && (
+                    <div className="text-white/70 text-xs mt-2 bg-leaf/5 border border-leaf/10 p-3 pb-4 rounded-xl animate-fade-in-up">
+                      {parseMarkdown(match.sensoContext)}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           )}
@@ -1256,10 +1300,17 @@ function ProductCard({
           )}
         </div>
 
-        <div className="p-4 pt-0">
-           <Button className="w-full bg-resin text-noir hover:bg-resin-light shadow-[0_0_15px_rgba(202,255,10,0.3)] transition-all active:scale-95 border-none" size="sm" onClick={() => onPay(product, brand)}>
-            <Shield className="h-4 w-4 mr-2" />
-            {brand.prescription_required ? "Order (Doc Consult Included)" : `Order — ${formatINR(product.price_inr)}`}
+        <div className="p-4 pt-0 flex justify-center w-full mt-2">
+           <Button 
+             className="w-fit bg-resin/10 border border-resin/40 text-resin hover:bg-resin/20 backdrop-blur-md shadow-[0_4px_20px_rgba(202,255,10,0.1)] hover:shadow-[0_0_25px_rgba(202,255,10,0.3)] transition-all active:scale-95 px-5 py-5 rounded-full" 
+             size="sm" 
+             onClick={() => onPay(product, brand)}
+           >
+            <Shield className="h-4 w-4 mr-2 opacity-80" />
+            <span className="font-medium tracking-wide">
+              Order — {formatINR(product.price_inr)}
+              {brand.prescription_required && <span className="ml-1.5 opacity-70 text-[11px] font-normal tracking-normal">(Doc Consult Included)</span>}
+            </span>
           </Button>
         </div>
       </CardContent>

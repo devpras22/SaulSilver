@@ -50,6 +50,22 @@ SaulSilver uses the Prava API to close the loop. Once the sommelier matches the 
 ### 2. Senso (Trust & Verification)
 Before SaulSilver recommends a gummy, it uses Senso's intelligence to verify the brand. We pass brand context to Senso to validate lab results, compliance, and public sentiment, ensuring we never recommend a shady product. As outlined above, this real-time Senso signal directly influences the mathematical matching algorithm to actively re-rank and filter candidates based on trust.
 
+**Live Trust Leaderboard:**
+| Rank | Brand | Trust Score | Products | License Info | Category |
+|------|-------|-------------|----------|--------------|----------|
+| 1 | Cannavedic | 0.90 | 3 | ✅ text (2) | vijaya |
+| 2 | Andyou | 0.86 | 3 | ✅ text (2) | cbd |
+| 3 | Moon Impact | 0.85 ⬆ from 0.72 | 2 | ✅ 25D/55/96 | vijaya |
+| 3 | Cannazo | 0.85 | 3 | ✅ text (2) | vijaya |
+| 5 | Qurist | 0.82 | 1 | ⚠️ no # | cbd |
+| 6 | The Trost | 0.80 | 9 | ✅ A-4906/2021 | vijaya |
+| 7 | Cure By Design | 0.73 | 4 | ⚠️ no # | vijaya |
+| 7 | Medicann | 0.73 | 2 | ⚠️ no # | vijaya |
+| 7 | Kushiva | 0.73 | 1 | ⚠️ on request | vijaya |
+| 10 | Hebe Wellness | 0.71 | 10 | ⚠️ image only | vijaya |
+| 10 | Polyherbs | 0.71 | 5 | ⚠️ no # | vijaya (marketplace) |
+| 12 | Magiccann | 0.67 | 6 | ✅ text (3) | vijaya |
+
 ### 3. Linq (iMessage Infrastructure)
 SaulSilver lives natively inside your phone. Using Linq, we built a message-native agent that operates entirely over iMessage and SMS. It features typing indicators for loading states and responds with rich iMessage App deep-links so users can seamlessly browse recommendations and checkout without ever leaving the blue bubble.
 

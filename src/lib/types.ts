@@ -230,6 +230,8 @@ export interface ProductMatch {
   reasons: string[]; // human-readable why
   /** Warnings — dose too high for tolerance, out of stock, etc. */
   warnings?: string[];
+  /** Full Markdown output from Senso AI analysis */
+  sensoContext?: string;
 }
 
 /** The user's intent when they enter the chat. Routes the opening message. */
