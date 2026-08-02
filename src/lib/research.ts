@@ -246,8 +246,14 @@ Given raw research context (crawled page text, structured product data, prices, 
 
 CLASSIFICATION IS CRITICAL:
 - "gummy" = any edible gummy/candy/jelly. Indian brands often call these "Vijaya candy" or just "candy" — those are GUMMIES.
-- "oil"/"topical"/"capsule"/"patch" are NOT gummies. A brand that only sells Pain Relief Roll-on, Patch, Gel, and Oil has ZERO gummies — set sells_gummies=false.
+- "oil"/"topical"/"capsule"/"patch" are NOT gummies. A brand with no edible gummies in its catalog has sells_gummies=false.
 - A product page that exists but says "Coming soon" / "Notify me" / has no price → status "coming_soon". This is how we know a product was announced but hasn't shipped.
+
+GROUNDING IS CRITICAL — DO NOT INVENT PRODUCTS:
+- Only list products that ACTUALLY APPEAR in the provided context (page text, structured data, or product names).
+- Use the EXACT product names from the context. Do NOT pattern-match against cannabis-brand stereotypes or fall back to generic names like "Pain Relief Roll-on" or "Vijaya Oil".
+- If the context does not list any products, return an EMPTY productCatalog — never fabricate one.
+- If the site is NOT a cannabis/cannabinoid brand, return an EMPTY productCatalog and set sells_gummies=false. Do not force-fit a non-cannabis site into the catalog.
 
 Be precise about cannabinoid mg, ratios, and prices for gummies. If a field isn't in the context, omit it — never invent numbers.
 

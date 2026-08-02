@@ -32,20 +32,20 @@ export async function POST(req: NextRequest) {
     const stagehand = new Stagehand({
       env: "LOCAL", // Use local Playwright instance
     });
-    await stagehand.init();
+    const { page } = await stagehand.init();
 
     try {
       // 3. Navigate to the specific product URL
       console.log(`[checkout/automate] Navigating to ${productUrl}...`);
-      await stagehand.page.goto(productUrl);
+      await page.goto(productUrl);
 
       // 4. Add to Cart & Go to Checkout
       console.log(`[checkout/automate] Adding to cart and proceeding to checkout...`);
-      await stagehand.page.act("Add the product to cart and proceed to the checkout page.");
+      await page.act("Add the product to cart and proceed to the checkout page.");
 
       // 5. Fill out payment details
       console.log(`[checkout/automate] Injecting Prava OTC into payment form...`);
-      await stagehand.page.act(`
+      await page.act(`
         Fill out the credit card payment form using these details:
         Card Number: ${token}
         CVV: ${dynamic_cvv}
@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
 
       // 6. Wait for and detect the decline
       console.log(`[checkout/automate] Waiting for merchant decline...`);
-      const extractResult = await stagehand.page.extract({
+      const extractResult = await page.extract({
         instruction: "Extract the payment error or decline message shown on the page after submitting the card.",
         schema: {
           errorMessage: "string",
