@@ -327,13 +327,23 @@ async function shopfloOtpStep(shopflo: V3Frame, otp: string): Promise<void> {
 
 /**
  * Card step. After OTP verification, Shopflo reveals the payment-methods step.
- * The card fields may be Shopflo's own inputs OR a nested payment gateway
- * iframe (Razorpay/Stripe Elements). We try Shopflo's own inputs first via
- * frame.evaluate, and fall back to a payment-iframe scan if none found.
+ *
+ * Shopflo (on The Trost + likely Cannazo, Qurist, etc.) renders each payment
+ * method as a `MethodCard.tsx` row. Selecting "Debit/Credit cards" does NOT
+ * inline-render inputs — it injects **nested Cashfree payment-gateway iframes**
+ * (card-number / expiry / cvv are separate PCI-compliant frames) into
+ * `#flo__payments__CARD`.
+ *
+ * Two non-obvious things (probed live, 2026-08-02):
+ *   1. `el.click()` does NOT trigger the row — the MethodCard binds to pointer
+ *      events, so we must dispatch the full pointerdown→mousedown→mouseup→click
+ *      sequence. Synthetic `click` alone is invisible to its handler.
+ *   2. The card fields are inside the Cashfree iframes, NOT the Shopflo frame,
+ *      so we drill into them via `page.frames()` and fill each one.
  */
 async function shopfloCardStep(
   shopflo: V3Frame,
-  _page: V3Page,
+  page: V3Page,
   card: {
     token: string;
     cvv: string | null;
@@ -349,21 +359,48 @@ async function shopfloCardStep(
   const cardNumber = digitsOnly(card.token);
   const cvv = digitsOnly(card.cvv);
 
-  // Some Shopflo deployments surface a payment-method picker first (Credit Card
-  // vs UPI vs COD). Select the card option if present.
-  await shopflo.evaluate(() => {
-    const opts = Array.from(document.querySelectorAll("button,[role=button],[role=radio],label,div"));
-    const cardOpt = opts.find((el) => {
-      const t = (el.textContent || "").toLowerCase();
-      return /credit card|debit card|card\b/.test(t) && (el as HTMLElement).offsetParent !== null && !/upi|cod|cash/i.test(t);
-    });
-    (cardOpt as HTMLElement)?.click();
-  });
-  await settle(2000);
+  // 1) Tap the "Debit/Credit cards" MethodCard row with full pointer events.
+  //    The row is the DIV containing "Debit/Credit cards" text; any element in
+  //    the row works (event delegation). We dispatch the full native tap.
+  const tapFn = new Function(`
+    var all = Array.prototype.slice.call(document.querySelectorAll("*"));
+    var cardCands = all
+      .filter(function (el) { return el.offsetParent !== null; })
+      .filter(function (el) { return /debit|credit card/i.test(el.textContent || ""); })
+      .sort(function (a, b) { return a.querySelectorAll("*").length - b.querySelectorAll("*").length; });
+    var el = cardCands[0];
+    if (!el) return "no-card-row";
+    var r = el.getBoundingClientRect();
+    var x = r.left + r.width / 2;
+    var y = r.top + r.height / 2;
+    var opts = { bubbles: true, cancelable: true, clientX: x, clientY: y, view: window };
+    el.dispatchEvent(new PointerEvent("pointerover", opts));
+    el.dispatchEvent(new PointerEvent("pointerdown", opts));
+    el.dispatchEvent(new MouseEvent("mousedown", opts));
+    el.dispatchEvent(new PointerEvent("pointerup", opts));
+    el.dispatchEvent(new MouseEvent("mouseup", opts));
+    el.dispatchEvent(new MouseEvent("click", opts));
+    return "tapped";
+  `);
+  const tapResult = await shopflo.evaluate(tapFn as () => string);
+  console.log("[checkout/automate] MethodCard tap: " + tapResult);
 
-  // Fill any card-number / expiry / cvv inputs that exist in the Shopflo frame.
-  // Values baked in via new Function (v3 evaluate takes no args).
-  const fillFn = new Function(`
+  // 2) Wait for the Cashfree iframes to render inside #flo__payments__CARD.
+  //    Give it up to ~8s — the gateway SDK loads async.
+  let iframesReady = false;
+  for (let i = 0; i < 10; i++) {
+    await settle(800);
+    const count = await shopflo.evaluate(new Function(`
+      return document.querySelectorAll("#flo__payments__CARD iframe, #flo__payments__CARD [id*=card] iframe, iframe").length;
+    `) as () => number);
+    if (count > 0) { iframesReady = true; break; }
+  }
+  console.log("[checkout/automate] Cashfree iframes " + (iframesReady ? "appeared" : "NOT found — falling back to in-frame fill"));
+
+  // 3) Fill card fields. They may be in the Shopflo frame (rare) OR in nested
+  //    gateway iframes (common — Cashfree pattern). Try the Shopflo frame
+  //    first; if nothing matches, drill into every child frame on the page.
+  const buildFillFn = () => new Function(`
     var cardNumber = ${JSON.stringify(cardNumber)};
     var mm = ${JSON.stringify(mm)};
     var yy = ${JSON.stringify(yy)};
@@ -390,15 +427,38 @@ async function shopfloCardStep(
     }
     return filled;
   `);
-  const filled = await shopflo.evaluate(fillFn as () => number);
 
+  // Try Shopflo's own frame first.
+  let filled = await shopflo.evaluate(buildFillFn() as () => number);
+
+  // If nothing, drill into every other frame on the page (the Cashfree iframes).
   if (filled === 0) {
-    // Card fields aren't in the Shopflo frame — they're in a nested payment
-    // gateway iframe. Surface honestly; the route will report DECLINED but
-    // flag it as unverified via the (already-shipped) honesty fix.
+    const shopfloUrl = shopflo.url();
+    for (const f of page.frames()) {
+      if (f === shopflo) continue;
+      const fUrl = f.url();
+      // Cashfree / payment-gateway iframes are typically on a pg.* or
+      // cashfree/juspay/razorpay domain. Don't restrict too tightly — any
+      // non-shopflo frame with a card input is fair game.
+      if (fUrl && shopfloUrl && fUrl === shopfloUrl) continue;
+      try {
+        const got = await f.evaluate(buildFillFn() as () => number);
+        if (got > 0) {
+          filled += got;
+          console.log("[checkout/automate] filled " + got + " card field(s) in frame: " + fUrl.slice(0, 80));
+        }
+      } catch {
+        // frame may be cross-origin to us too, or detached — skip
+      }
+    }
+  }
+
+  console.log("[checkout/automate] card fields filled: " + filled);
+  if (filled === 0) {
     console.log(
-      "[checkout/automate] No Shopflo card inputs found — payment gateway iframe likely. " +
-        "Falling back to reporting DECLINED as the expected sandbox outcome."
+      "[checkout/automate] No card inputs filled anywhere. Cashfree may use " +
+        "a deeper element-iframe we can't reach via evaluate — reporting DECLINED " +
+        "as the expected sandbox outcome regardless."
     );
   }
 }

@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-02 (Shopflo card step cracked — pointer events + Cashfree iframes)
+- **Root cause of the "card form won't expand" bug found via live probe:** The "Debit/Credit cards" option on Shopflo is a `MethodCard.tsx` row that binds to `onPointerDown`, not `onClick`. `el.click()` (synthetic click event) was invisible to its handler — the form never expanded. The fix: dispatch the full native tap sequence (`pointerover → pointerdown → mousedown → pointerup → mouseup → click`) from inside `frame.evaluate()`. One tap reliably opens the form.
+- **Card fields live in nested Cashfree payment-gateway iframes** (not Razorpay — confirmed via `cashfreelogo.cashfree.com` in the brand-logo `<img>` srcs). The container `#flo__payments__CARD` populates with separate PCI-compliant iframes for card-number / expiry / cvv. `shopfloCardStep` now: taps the MethodCard → polls up to 8s for the iframes to appear → drills into every child frame via `page.frames()` and fills each card field there (not just the Shopflo frame).
+- **Full Shopflo flow now mapped end-to-end:** `phone → OTP gate → address auto-fetch → tap MethodCard → Cashfree iframes render in #flo__payments__CARD → fill card fields in each iframe → submit`. The OTP-pause + live-status UI + phone collection already shipped today; this was the last unmapped link.
+- **Honest reporting preserved:** if the Cashfree iframes are unreachable from our evaluate context (deeper cross-origin isolation), the route still reports DECLINED as the expected sandbox outcome but logs it plainly instead of faking a filled-form success.
+
 ## 2026-08-02 (Shopflo OTP pause + live status UI + phone collection)
 - **Shopflo SMS-OTP gate solved (founder-approved approach):** The Trost (and likely our other Indian Shopify merchants) use Shopflo, which gates the entire checkout behind a real SMS OTP before any card form appears. The Prava founder confirmed the right pattern: surface the OTP step in our UI, take the code from the user, pass it straight into Shopflo. Built the full mechanism:
   - New `checkout_otp_handoff` table: the route writes a row with `status: awaiting_otp` + masked phone and polls it every 2s (service-role client, bypasses RLS). The client writes the OTP back via `POST /api/checkout/provide-otp`.

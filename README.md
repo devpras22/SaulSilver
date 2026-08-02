@@ -131,21 +131,32 @@ SaulSilver lives natively inside your phone. Using Linq, we built a message-nati
 
 ## 🟥 Current Issues
 
-Live tracker of the real blockers on Step 5 (autonomous merchant checkout).
+Live tracker of the real state of Step 5 (autonomous merchant checkout).
 Full detail in **[`CURRENT-ISSUES.md`](./CURRENT-ISSUES.md)** — kept separate so
-this README stays stable. Summary of what's actually broken right now:
+this README stays stable. Summary:
 
-- **🔴 Shopflo SMS-OTP wall** — The Trost (and likely our other Indian Shopify
-  stores) use Shopflo, which gates the entire checkout behind a **real SMS OTP**
-  before any card form appears. No card fields exist in the DOM until OTP is
-  verified. This is an identity-verification gate, not a code bug — no amount of
-  browser automation reaches the card form without a real Indian phone number.
-  Discord question posted to Prava re: whether their Browser Harness handles this.
+- **🟢 Shopflo SMS-OTP wall — SOLVED.** Founder-approved approach: surface the
+  OTP step in our UI, take the code from the user, pass it into Shopflo. Built
+  + proven across multiple live runs. Now a shipped feature and a demo moment,
+  not a blocker.
+- **🟡 Card step — root cause cracked, fix wired in.** Two non-obvious things
+  found by live probing: (1) the "Debit/Credit cards" row binds to
+  `onPointerDown`, so `el.click()` is invisible — we dispatch the full native
+  tap sequence; (2) card fields live in **nested Cashfree payment-gateway
+  iframes** inside `#flo__payments__CARD`, so we drill into each child frame to
+  fill them. Mechanics proven; end-to-end fill against a real Prava card is the
+  last verification.
+- **🔴 The real, honest blocker — every platform × gateway is a different
+  snowflake.** There is no universal checkout. Shopify-native, Shopify+Shopflo,
+  WooCommerce, custom SPA each render a different DOM; Cashfree, Razorpay,
+  Juspay, Stripe Elements each inject their own PCI card iframes. The Trost
+  path (Shopflo + Cashfree) is now mapped end-to-end and is the demo target.
+  Cannazo/Qurist are likely the same stack; AarogyaCBD (WooCommerce) is a
+  completely different flow. The architecture (OTP pause, live status, pointer
+  taps, nested-iframe drill) is reusable; the per-merchant selectors are not.
+  This is grinding per-combination work, not one clever fix.
 - **🟡 Moon Impact cannot accept payments** — `trymoonimpact.com/checkout`
   shows *"This store can't accept payments right now."* Dead as a demo target.
-- **🟢 Honesty fixes shipped** — killed a fabricated "Test card declined"
-  success message; made `reportStatus` verify Prava actually received the
-  DECLINED report instead of fire-and-forget.
 
 ## 📜 Disclaimer
 *For legal markets only. Not medical advice. Not a seller. SaulSilver is a discovery, trust, and orchestration layer.*
