@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-08-02 (Senso trust layer)
+- **Linq iMessage Native Agent:** Fully gutted the legacy Kusushi webhook (`/api/linq/webhook/route.ts`) and replaced it with a shared instance of Saul Silver's brain (`src/lib/saul-agent.ts`). The SMS agent now natively supports typing indicators and sends rich iMessage App deep links to render glassmorphic Prava checkout cards natively in the blue bubble.
 - **Senso rewrite (real API):** `src/lib/senso.ts` rewritten against the verified Senso REST API (`apiv2.senso.ai/api/v1`, `X-API-Key` header). Adds `ingestBrand()`, `waitUntilIndexed()`, `searchTrust()`, `getBrandTrustScore()`, `purgeAll()`. The previous version guessed the URL/auth/query shape and would never have worked.
 - **Senso wired into sommelier match:** `/api/match` now calls `enrichBrandsWithSensoTrust()` (`src/lib/senso-trust.ts`) to blend 50% static Supabase trust + 50% grounded Senso signal per candidate brand. Effect/taste/dose/budget ranking runs first; Senso modulates the trust weight and breaks ties. Reason builder surfaces a Senso citation so judges can see the effect.
 - **Live 14th-brand path is now complete:** `researchBrand()` in `src/lib/research.ts` now (a) extracts `support_email` via the OpenAI schema with an explicit "never fabricate" instruction, and (b) ingests the brand into Senso as a trust doc (best-effort, non-blocking). `/api/research` persists `support_email` to Supabase. Previously the live path produced brands with no support email (→ broken `support@<domain>` guess) and no Senso doc (→ ungrounded recommendations).

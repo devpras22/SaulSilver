@@ -30,8 +30,12 @@ It operates in a strict, three-step loop:
 
 A medical/cannabis agent cannot hallucinate doses. We built SaulSilver on the philosophy of **Reliability over Magic**.
 
-* **LLM as the Router:** We use OpenAI strictly for natural language parsing—interviewing the user and understanding their intent.
-* **Deterministic Matching:** The actual recommendation engine (`src/lib/sommelier.ts`) is a strict mathematical scoring matrix. If a user is a "first-timer", the engine mathematically penalizes "heavy dose" products to zero. This ensures maximum safety, reproducibility, and trust. 
+**The Dual AI Stack:** 
+* **The Builder (OpenAI Codex):** This entire application—from the glassmorphic UI down to the database schema and Senso ingestion pipeline—was aggressively scaffolded and iteratively refined using **OpenAI Codex** as the underlying code-generation engine, orchestrated through agentic coding environments like Antigravity and Claude Code. 
+* **The Brain (OpenAI LLMs):** The runtime conversational UI is powered natively by OpenAI, using strict function calling and natural language parsing to flawlessly extract user intent, chat conversationally, and drive the underlying mathematical routing engine.
+
+**Deterministic Math + Senso Intelligence:** 
+Other agents just query an LLM and pray. Our matching engine (`src/lib/sommelier.ts`) is a strict mathematical scoring matrix. We filter based on effects, tolerance, and budget, and then pipe the candidates into a `50/50` weighted ranking algorithm: 50% static trust (Supabase metrics like license validity and verified lab tests) and 50% dynamic trust (Senso vector retrieval of public sentiment and recent controversies).
 
 ## 🔌 Hackathon Sponsor Integrations
 
@@ -43,7 +47,10 @@ SaulSilver uses the Prava API to close the loop. Once the sommelier matches the 
 * *Support for Marketplaces:* Architected to resolve to marketplace rails identically.
 
 ### 2. Senso (Trust & Verification)
-Before SaulSilver recommends a gummy, it uses Senso's intelligence to verify the brand. We pass brand context to Senso to validate lab results, compliance, and public sentiment, ensuring we never recommend a shady product.
+Before SaulSilver recommends a gummy, it uses Senso's intelligence to verify the brand. We pass brand context to Senso to validate lab results, compliance, and public sentiment, ensuring we never recommend a shady product. As outlined above, this real-time Senso signal directly influences the mathematical matching algorithm to actively re-rank and filter candidates based on trust.
+
+### 3. Linq (iMessage Infrastructure)
+SaulSilver lives natively inside your phone. Using Linq, we built a message-native agent that operates entirely over iMessage and SMS. It features typing indicators for loading states and responds with rich iMessage App deep-links so users can seamlessly browse recommendations and checkout without ever leaving the blue bubble.
 
 ## 🚀 Getting Started
 
