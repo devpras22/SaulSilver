@@ -986,7 +986,7 @@ function CatalogList({
             </button>
             
             {isOpen && (
-              <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-4 pt-1 pl-4 pr-6 scrollbar-hide border-t border-border/30">
+              <div className="flex snap-x snap-mandatory overflow-x-auto pb-4 pt-4 pl-8 sm:pl-4 pr-6 scrollbar-hide border-t border-border/30 -space-x-12 sm:space-x-3">
                 {vibe.products.map(m => (
                   <MenuProductCard key={m.product.id} match={m} onPay={onPay} />
                 ))}
@@ -1005,7 +1005,7 @@ function MenuProductCard({ match, onPay }: { match: ProductMatch; onPay: (p: Can
 
   if (expanded) {
     return (
-      <div className="w-80 shrink-0 snap-start">
+      <div className="w-80 shrink-0 snap-start relative z-50 shadow-2xl">
         <ProductCard match={match} rank={-1} onPay={onPay} onClose={() => setExpanded(false)} />
       </div>
     );
@@ -1021,7 +1021,7 @@ function MenuProductCard({ match, onPay }: { match: ProductMatch; onPay: (p: Can
   return (
     <Card 
       onClick={() => setExpanded(true)}
-      className="w-56 shrink-0 snap-start cursor-pointer overflow-hidden border-white/10 bg-black/40 backdrop-blur-md transition-all hover:border-resin/40 hover:shadow-[0_0_15px_rgba(202,255,10,0.15)] group"
+      className="w-56 shrink-0 snap-start cursor-pointer overflow-hidden border-white/10 bg-black/40 backdrop-blur-md transition-all hover:border-resin/40 hover:-translate-y-1 hover:shadow-xl group relative shadow-lg"
     >
       <div className="h-28 w-full bg-gradient-to-b from-resin/5 to-black/60 relative overflow-hidden border-b border-white/10">
         <div className="absolute inset-0 flex items-center justify-center">
@@ -1032,7 +1032,7 @@ function MenuProductCard({ match, onPay }: { match: ProductMatch; onPay: (p: Can
             onError={(e) => {
               e.currentTarget.style.display = 'none';
               e.currentTarget.parentElement?.classList.add('opacity-10');
-              // fallback to Leaf icon
+              const Icon = require('lucide-react').Leaf;
               e.currentTarget.parentElement!.innerHTML = '<svg class="w-12 h-12 text-resin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>';
             }}
           />
@@ -1053,7 +1053,7 @@ function MenuProductCard({ match, onPay }: { match: ProductMatch; onPay: (p: Can
         </div>
         <div className="flex items-center justify-between mt-auto">
           <span className="text-sm font-semibold text-resin drop-shadow-sm">{formatINR(product.price_inr)}</span>
-          <span className="text-[10px] text-white/40 group-hover:text-resin/80 transition-colors">View details →</span>
+          <span className="flex items-center text-[10px] text-white/40 group-hover:text-resin/80 transition-colors font-medium">View details →</span>
         </div>
       </CardContent>
     </Card>
@@ -1240,6 +1240,7 @@ function BrandReport({
   isLatestDashboard?: boolean;
 }) {
   const [expanded, setExpanded] = useState(isLatestDashboard);
+  const [mobileDetailsOpen, setMobileDetailsOpen] = useState(false);
   
   useEffect(() => {
     setExpanded(isLatestDashboard);
@@ -1264,44 +1265,65 @@ function BrandReport({
           
           {expanded && (
             <CardContent className="pt-4 animate-fade-in-up">
-              {brand.tagline && <p className="mb-3 text-sm italic text-ink-soft">{brand.tagline}</p>}
-              <p className="text-sm text-ink">{research.findings.summary}</p>
-              {research.findings.license && (
-                <div className="mt-3 flex items-start gap-2 rounded-lg border border-leaf/20 bg-leaf/5 p-3 text-xs">
-                  <Shield className="mt-0.5 h-4 w-4 shrink-0 text-leaf-light" />
-                  <span className="text-ink-soft">{research.findings.license}</span>
-                </div>
-              )}
-              {research.findings.red_flags && research.findings.red_flags.length > 0 && (
-                <div className="mt-3">
-                  <p className="mb-1.5 text-xs font-medium text-ember">Red flags</p>
-                  <ul className="space-y-0.5 text-xs text-ink-muted">
-                    {research.findings.red_flags.map((r, i) => (<li key={i}>• {r}</li>))}
-                  </ul>
-                </div>
-              )}
+              {/* MOBILE TL;DR HEADER */}
+              <div className="block sm:hidden mb-4">
+                <button 
+                  onClick={() => setMobileDetailsOpen(!mobileDetailsOpen)}
+                  className="flex w-full items-center justify-between rounded-lg bg-noir-soft px-3 py-2 text-xs font-medium text-ink-muted border border-border"
+                >
+                  <span className="flex items-center gap-2">
+                    {research.findings.red_flags && research.findings.red_flags.length > 0 
+                      ? <><AlertCircle className="h-4 w-4 text-ember"/> <span className="text-ember font-semibold">{research.findings.red_flags.length} Red Flags</span></>
+                      : <><Shield className="h-4 w-4 text-leaf"/> <span className="text-leaf font-semibold">Verified Details</span></>
+                    }
+                  </span>
+                  {mobileDetailsOpen ? <ChevronUp className="h-4 w-4"/> : <ChevronDown className="h-4 w-4"/>}
+                </button>
+              </div>
+
+              {/* TEXT CONTENT (Hidden on mobile if not open) */}
+              <div className={mobileDetailsOpen ? "block mb-4" : "hidden sm:block sm:mb-4"}>
+                {brand.tagline && <p className="mb-3 text-sm italic text-ink-soft">{brand.tagline}</p>}
+                <p className="text-sm text-ink">{research.findings.summary}</p>
+                {research.findings.license && (
+                  <div className="mt-3 flex items-start gap-2 rounded-lg border border-leaf/20 bg-leaf/5 p-3 text-xs">
+                    <Shield className="mt-0.5 h-4 w-4 shrink-0 text-leaf-light" />
+                    <span className="text-ink-soft">{research.findings.license}</span>
+                  </div>
+                )}
+                {research.findings.red_flags && research.findings.red_flags.length > 0 && (
+                  <div className="mt-3">
+                    <p className="mb-1.5 text-xs font-medium text-ember">Red flags</p>
+                    <ul className="space-y-0.5 text-xs text-ink-muted">
+                      {research.findings.red_flags.map((r, i) => (<li key={i}>• {r}</li>))}
+                    </ul>
+                  </div>
+                )}
+                {brand.instagram_followers && brand.instagram_followers > 0 && (
+                  <p className="mt-3 text-xs text-ink-muted">
+                    <a 
+                      href={`https://instagram.com/${brand.instagram_handle?.replace('@', '')}`} 
+                      target="_blank" 
+                      rel="noreferrer" 
+                      className="hover:text-resin transition-colors underline underline-offset-2"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {brand.instagram_handle}
+                    </a> · {formatFollowers(brand.instagram_followers)}
+                  </p>
+                )}
+              </div>
+
+              {/* PRODUCTS */}
               {products.length > 0 && (
-                <div className="mt-4 border-t border-white/10 pt-4">
+                <div className="border-t border-white/10 pt-4">
                   <p className="mb-3 text-xs uppercase tracking-wider text-white/50">{products.length} product{products.length > 1 ? "s" : ""} from {brand.name}</p>
-                  <div className="flex w-full snap-x snap-mandatory gap-3 overflow-x-auto pb-4 scrollbar-hide">
+                  <div className="flex w-full snap-x snap-mandatory overflow-x-auto pb-6 scrollbar-hide -space-x-12 sm:space-x-3 pl-8 sm:pl-0">
                     {products.map((p, i) => (
                       <MenuProductCard key={i} match={{ product: p, brand, score: 1, reasons: [], warnings: [] }} onPay={onPay} />
                     ))}
                   </div>
                 </div>
-              )}
-              {brand.instagram_followers && brand.instagram_followers > 0 && (
-                <p className="mt-3 text-xs text-ink-muted">
-                  <a 
-                    href={`https://instagram.com/${brand.instagram_handle?.replace('@', '')}`} 
-                    target="_blank" 
-                    rel="noreferrer" 
-                    className="hover:text-resin transition-colors underline underline-offset-2"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {brand.instagram_handle}
-                  </a> · {formatFollowers(brand.instagram_followers)}
-                </p>
               )}
             </CardContent>
           )}
